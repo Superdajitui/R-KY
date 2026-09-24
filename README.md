@@ -5,9 +5,7 @@
 首屏视觉参考 **Lando Norris 官网**（OFF+BRAND 设计，Awwwards Site of the Day）：
 双色系统、超大字体、动能交互、人物抠像叠加排版。
 
-首屏人物戴着 **奥斯卡·皮亚斯特里 2025 美国大奖赛（奥斯汀）特别版
-「Retro Tech」头盔** —— 电路板走线涂装、用线路拼出的 81 号。
-鼠标划过时整块画面会有**流体波动**（WebGL 实现，见下）。
+鼠标划过人物时整块画面会有**流体波动**（WebGL 实现，见下）。
 
 **纯静态站点**：零依赖、零构建步骤，HTML/CSS/JS 全手写，
 运行时不需要任何外部资源（字体和图片都已自托管）。
@@ -116,7 +114,7 @@ personal-site/
 ├── 404.html                错误页
 ├── src/                    合成用的源素材，不参与部署
 │   ├── portrait-1400.webp  抠好底的人物
-│   └── helmet.webp         头盔素材
+│   └── helmet.webp         头盔素材（目前未使用，保留以便加回）
 ├── assets/                 线上资源（只放网页真正会请求的文件）
 │   ├── css/style.css       全部样式（设计令牌集中在 :root）
 │   ├── js/main.js          滚动/光标/入场等通用交互
@@ -245,17 +243,19 @@ const MAXVEL   = 0.028;  // 位移上限
 **兜底**：任何一步失败（不支持 WebGL、贴图加载失败、context 丢失、
 系统开了"减少动态效果"）都安静退回静态 `<img>`，绝不让首屏变空白。
 
-### 重新生成合成图
+### 重新生成首屏图
 
-头盔是在离线阶段烤进人物图的（不是 CSS 叠两层）：
-这样 shader 只需采样一张贴图，逻辑简单、性能也好。
+首屏图是在离线阶段烤好的一张贴图（不是 CSS 叠层）：
+这样 shader 只需采样一张纹理，逻辑简单、性能也好。
 
 ```bash
-node tools/compose-hero.mjs --h=780 --cx=570 --top=58
+node tools/compose-hero.mjs --no-helmet     # 当前状态：纯人物
+node tools/compose-hero.mjs                 # 戴上皮亚斯特里头盔
 ```
 
 | 参数 | 说明 |
 |---|---|
+| `--no-helmet` | 只输出人物原图，不叠头盔 |
 | `--h` | 头盔高度(px) |
 | `--cx` | 头盔中心 x |
 | `--top` | 头盔顶部 y |
@@ -264,22 +264,28 @@ node tools/compose-hero.mjs --h=780 --cx=570 --top=58
 人物图 1115×1400，关键坐标：发顶 y=13、下巴 y=828、头心 x=570。
 拿不准位置就跑 `node tools/grid.mjs` 生成带坐标网格的图来看。
 
-**比例参考**：头盔占画面高度 45~50% 最像"戴着"；超过 60% 会像大头娃娃。
-头顶露出一点头发反而更自然（纯物理正确地全包住会显得像浮在头上）。
-
-### 头盔素材
+### 头盔素材（目前未使用，保留以便随时加回）
 
 `tools/helmet-raw/austin-1.webp` 是从
 [123helmets](https://123helmets.com/f1-helmets/oscar-piastris-retro-tech-helmet-for-the-2025-us-grand-prix-in-austin/)
-下载的 800×800 原图。
+下载的 800×800 原图 —— 皮亚斯特里 2025 美国大奖赛（奥斯汀）特别版
+「Retro Tech」：电路板走线涂装、用线路拼出的 81 号。
 
-> ⚠️ **版权提醒**：头盔涂装和这张照片都是他人的版权素材
-> （McLaren / Piastri 及拍摄方）。个人非商业网站做粉丝向展示一般没问题，
-> 但如果要商用，建议换成自己拍的或官方授权的图。
+头盔是在**透明底**上的，所以用 `optimize.mjs`（只缩放压缩），
+不要用 `cutout.mjs`（那是给白底照片去背的）。
 
 ```bash
-node tools/optimize.mjs tools/helmet-raw/austin-1.webp assets/img --name=helmet --sizes=800,520
+node tools/optimize.mjs tools/helmet-raw/austin-1.webp src --name=helmet --sizes=800
+node tools/compose-hero.mjs                 # 加回头盔
 ```
+
+**比例参考**：头盔占画面高度 45~50% 最像"戴着"；超过 60% 会像大头娃娃。
+头顶露出一点头发反而更自然（纯物理正确地全包住会显得像浮在头上）。
+当初在 `--h` 720/760/800/900 之间做了六组对比才定的 780。
+
+> ⚠️ **版权提醒**：头盔涂装和那张照片都是他人的版权素材
+> （McLaren / Piastri 及拍摄方）。个人非商业网站做粉丝向展示一般没问题，
+> 但如果要商用，建议换成自己拍的或官方授权的图。
 
 ---
 
