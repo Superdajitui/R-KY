@@ -102,16 +102,35 @@ if ($staged) {
 # ── 推送 ─────────────────────────────────────────────
 Line ''
 Line '  [4/4] 推送到 GitHub...'
-$remoteUrl = "https://github.com/$user/$REPO.git"
+
+# 用 SSH 而不是 HTTPS，两个原因：
+#   1. 这台机器上 Watt Toolkit 把 github.com 劫持到 127.0.0.1 做本地反代，
+#      它的中间人证书过不了 git 的 schannel 吊销检查，HTTPS 会直接失败
+#   2. ssh.github.com 不在劫持列表里，且走 443 端口，比 22 稳定得多
+$remoteUrl = "ssh://git@ssh.github.com:443/$user/$REPO.git"
 $existing = git remote get-url origin 2>$null
 if ($LASTEXITCODE -eq 0) {
     git remote set-url origin $remoteUrl
 } else {
     git remote add origin $remoteUrl
 }
+
+# 指定用哪把私钥；IdentitiesOnly 避免 ssh 拿别的密钥乱试
+$keyPath = "$env:USERPROFILE\.ssh\id_ed25519_github"
+if (-not (Test-Path $keyPath)) {
+    Line ''
+    Line "  [!] 没找到 SSH 密钥: $keyPath"
+    Line '      这台机器上 GitHub 只能走 SSH（原因见 README 的「踩过的坑」），'
+    Line '      请先运行一次:  tools\设置SSH密钥.bat'
+    Line ''
+    Read-Host '  按回车键退出'
+    exit 1
+}
+git config core.sshCommand "ssh -i `"$($keyPath -replace '\\','/')`" -o IdentitiesOnly=yes"
 Line "        远程仓库: $remoteUrl"
 
-git push -u origin main
+# stdin 接 NUL —— 否则 ssh 在非交互环境里可能一直卡在读标准输入
+cmd /c "git push -u origin main < NUL"
 $pushOk = ($LASTEXITCODE -eq 0)
 
 Line ''
@@ -119,20 +138,19 @@ Line '  ────────────────────────
 if ($pushOk) {
     Line '   推送成功！'
     Line ''
-    Line '   最后一步（只需做一次）——开启 GitHub Pages:'
-    Line "     1. 打开  https://github.com/$user/$REPO/settings/pages"
-    Line '     2. Source 选  Deploy from a branch'
-    Line '     3. Branch 选  main，文件夹选  /docs'
-    Line '     4. 点 Save，等 1~2 分钟'
+    Line '   GitHub Pages 会在 1~2 分钟内自动重新构建。'
+    Line "   站点地址:  $siteUrl"
     Line ''
-    Line "   然后就能用这个地址访问了:  $siteUrl"
+    Line '   想确认是否更新成功，可以运行:'
+    Line '     npm run verify:live'
 } else {
     Line '   [!] 推送失败，常见原因：'
     Line ''
     Line "       - GitHub 上还没有创建仓库 $REPO"
     Line "         请先打开 https://github.com/new 新建，"
     Line "         名字填 $REPO，选 Public，不要勾选 README"
-    Line '       - 或者登录窗口被关掉了，重跑一次本脚本即可'
+    Line '       - SSH 密钥没有添加到 GitHub 账号'
+    Line '         运行 tools\设置SSH密钥.bat 按提示操作'
 }
 Line '  ──────────────────────────────────────────────'
 Line ''

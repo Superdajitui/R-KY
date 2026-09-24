@@ -1,10 +1,40 @@
 # 任恺昱 Kerry R — 个人网站
 
+## 🌐 https://superdajitui.github.io/R-KY/
+
 首屏视觉参考 **Lando Norris 官网**（OFF+BRAND 设计，Awwwards Site of the Day）：
 双色系统、超大字体、动能交互、人物抠像叠加排版。
 
 **纯静态站点**：零依赖、零构建步骤，HTML/CSS/JS 全手写，
 运行时不需要任何外部资源（字体和图片都已自托管）。
+
+---
+
+## 怎么更新网站
+
+改完内容后，**双击 `deploy-github.bat`**，一两分钟后线上自动更新。
+
+想确认是否更新成功：
+
+```bash
+npm run verify:live     # 用浏览器真实渲染线上站点，检查 20 项
+```
+
+---
+
+## 部署备忘
+
+- **仓库**：https://github.com/Superdajitui/R-KY （Public）
+- **发布目录**：`main` 分支的 `/docs`
+- **推送方式**：SSH over 443（`ssh://git@ssh.github.com:443/Superdajitui/R-KY.git`）
+- **密钥**：`~/.ssh/id_ed25519_github`（换电脑要重新跑 `tools\设置SSH密钥.bat`）
+
+> **为什么用 SSH 而不是 HTTPS？**
+> 这台机器上装了 **Watt Toolkit（Steam++）**，它会把 `github.com` 劫持到
+> `127.0.0.1` 做本地反代（hosts 里能看到一整列 `127.0.0.1 github.com`）。
+> 它的中间人证书过不了 git 的 schannel 吊销检查，HTTPS 推送必然报
+> `CRYPT_E_NO_REVOCATION_CHECK`。而 `ssh.github.com` 不在劫持列表里，
+> 也不走 TLS，所以完全绕开了这个问题。
 
 ---
 
@@ -216,6 +246,10 @@ npm run test:subpath   # ★ 在 /R-KY/ 子路径下实测生产包，部署前�
 5. **404 页的资源路径必须相对站点根** —— 见上面 `test:subpath` 的说明。
 6. **抠图不能只看颜色距离** —— 头发与耳朵交界的抗锯齿渐变同样"距离够近"，
    泛洪会顺着它啃进耳朵。必须加饱和度守卫，详见 `tools/cutout.mjs`。
+7. **这台机器的 `github.com` 被 Watt Toolkit 劫持到 `127.0.0.1`** ——
+   所以 git 必须走 SSH（见上面的部署备忘）。另外 `github.io` 也在劫持列表里，
+   意味着**你自己浏览器访问自己的网站会经过 Watt Toolkit 代理**；
+   如果你关掉 Watt Toolkit，记得确认 `github.io` 还能正常解析。
 
 ---
 

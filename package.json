@@ -9,6 +9,7 @@
     "preview:docs": "node tools/serve.mjs 4322 --root=docs --prefix=/R-KY",
     "build": "node tools/build.mjs",
     "test:subpath": "node tools/test-subpath.mjs",
+    "verify:live": "node tools/verify-live.mjs",
     "shot": "node tools/shoot.mjs",
     "inspect": "node tools/inspect.mjs",
     "og": "node tools/og.mjs",
