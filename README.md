@@ -114,16 +114,25 @@ netsh advfirewall firewall delete rule name="个人网站预览 4321"
 personal-site/
 ├── index.html              页面结构（所有文案都在这里）
 ├── 404.html                错误页
-├── assets/                 运行时资源
+├── src/                    合成用的源素材，不参与部署
+│   ├── portrait-1400.webp  抠好底的人物
+│   └── helmet.webp         头盔素材
+├── assets/                 线上资源（只放网页真正会请求的文件）
 │   ├── css/style.css       全部样式（设计令牌集中在 :root）
-│   ├── js/main.js          全部交互，零依赖
-│   ├── img/                人物抠像 + 社交分享预览图
+│   ├── js/main.js          滚动/光标/入场等通用交互
+│   ├── js/fluid.js         首屏流体效果（WebGL）
+│   ├── img/                合成图 + 社交分享预览图
 │   └── fonts/              自托管字体（Anton + Inter，共 160KB）
 ├── docs/                   ← 生产包，GitHub Pages 发布这个文件夹
 ├── tools/                  构建、部署、验证脚本，不影响网站运行
 ├── 打开网站.bat            本地预览（双击）
 └── deploy-github.bat       发布到 GitHub Pages（双击）
 ```
+
+> **为什么源素材单独放 `src/`？**
+> 打包时是整个 `assets/img/` 一起复制的。头盔原图和未合成的抠像图
+> 一开始也放在那里，结果部署包 1527 KB，而网页实际只用到 464 KB ——
+> 白白多传一兆。分开之后降到 690 KB。
 
 ---
 

@@ -17,9 +17,16 @@ const EDGE = [
 ].find(p => existsSync(p));
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+// 注意：不能加 --disable-gpu，否则 WebGL 起不来，流体效果会走静态兜底分支，
+// 测不到真正上线的那条路径。显式启用 SwiftShader 软件渲染。
 const browser = await puppeteer.launch({
   executablePath: EDGE, headless: 'new',
-  args: ['--disable-gpu', '--hide-scrollbars'],
+  args: [
+    '--hide-scrollbars',
+    '--enable-unsafe-swiftshader',
+    '--use-gl=angle',
+    '--use-angle=swiftshader',
+  ],
 });
 
 console.log(`\n验证线上站点: ${URL_BASE}\n`);
@@ -45,6 +52,7 @@ const s = await page.evaluate(() => {
   const img = document.querySelector('.hero__portrait img');
   const word = document.querySelector('.hero__word--top');
   const cn = document.querySelector('.hero__cn');
+  const portrait = document.querySelector('.hero__portrait');
   return {
     title: document.title,
     ready: document.body.classList.contains('is-ready'),
@@ -56,6 +64,9 @@ const s = await page.evaluate(() => {
     cnStroke: cn ? getComputedStyle(cn).webkitTextStrokeWidth : '',
     fontAnton: document.fonts.check('16px Anton'),
     fontInter: document.fonts.check('16px Inter'),
+    // 流体效果
+    fluidReady: portrait?.classList.contains('is-webgl') || false,
+    hasCanvas: !!document.querySelector('.hero__canvas'),
   };
 });
 
@@ -63,12 +74,47 @@ console.log('首页');
 check(s.title.includes('任恺昱'), '标题正确', s.title);
 check(s.ready, '预加载揭幕完成');
 check(s.imgLoaded, '照片已加载', s.imgSrc);
+check(s.imgSrc.includes('hero-composite'), '取用的是戴头盔的合成图', s.imgSrc);
 check(s.wordOpacity === '1', '首屏大字名可见');
 check(s.fontAnton, 'Anton 字体（英文大字）已加载');
 check(s.fontInter, 'Inter 字体（正文）已加载');
 check(s.cnStroke && s.cnStroke !== '0px', '中文描边效果生效', s.cnStroke);
 check(s.ogImage.startsWith('https://'), 'og:image 是绝对地址', s.ogImage);
 check(s.canonical.startsWith('https://'), 'canonical 是绝对地址', s.canonical);
+
+// 流体效果：划过人物区域，确认画面真的变了
+const portraitBox = await page.evaluate(() => {
+  const r = document.querySelector('.hero__portrait').getBoundingClientRect();
+  return { x: r.left, y: r.top, w: r.width, h: r.height };
+});
+const clip = {
+  x: Math.max(0, Math.round(portraitBox.x)),
+  y: Math.max(0, Math.round(portraitBox.y)),
+  width: Math.round(portraitBox.w),
+  height: Math.round(Math.min(portraitBox.h, 900 - portraitBox.y)),
+};
+const hashShot = async () => {
+  const b = await page.screenshot({ clip });
+  let h = 2166136261;
+  for (let i = 0; i < b.length; i += 7) { h ^= b[i]; h = Math.imul(h, 16777619) >>> 0; }
+  return h;
+};
+const hIdle = await hashShot();
+const cx = portraitBox.x + portraitBox.w / 2;
+const cy = portraitBox.y + portraitBox.h * 0.45;
+for (let i = 0; i <= 18; i++) {
+  const t = i / 18;
+  await page.mouse.move(cx - portraitBox.w * 0.25 + portraitBox.w * 0.5 * t,
+                        cy - 50 + Math.sin(t * Math.PI * 2) * 80);
+  await sleep(22);
+}
+await sleep(80);
+const hMove = await hashShot();
+
+console.log('\n流体效果');
+check(s.fluidReady, 'WebGL 初始化成功');
+check(s.hasCanvas, 'canvas 已插入');
+check(s.fluidReady && hMove !== hIdle, '鼠标划过后画面发生变化');
 
 await page.screenshot({ path: 'tools/shots/live-desktop.png' });
 

@@ -16,7 +16,8 @@
     "shot": "node tools/shoot.mjs",
     "inspect": "node tools/inspect.mjs",
     "og": "node tools/og.mjs",
-    "cutout": "node tools/cutout.mjs \"%USERPROFILE%/Desktop/证件照.jpg\" assets/img",
+    "cutout": "node tools/cutout.mjs \"%USERPROFILE%/Desktop/证件照.jpg\" src",
+    "optimize": "node tools/optimize.mjs src/helmet-raw.webp src --name=helmet --sizes=800",
     "preview": "node tools/preview.mjs"
   },
   "devDependencies": {

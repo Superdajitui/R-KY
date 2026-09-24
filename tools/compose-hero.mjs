@@ -13,8 +13,10 @@ import sharp from 'sharp';
 import { statSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
-const PORTRAIT = 'assets/img/portrait-1400.webp';
-const HELMET   = 'assets/img/helmet.webp';
+// 源素材放在 src/，不参与部署；assets/ 只放网页真正会请求的文件。
+// 否则头盔原图、未合成的抠像图都会被一起打包上线，白白多传一兆。
+const PORTRAIT = 'src/portrait-1400.webp';
+const HELMET   = 'src/helmet.webp';
 
 /**
  * @param {object} o
