@@ -297,21 +297,7 @@
      --------------------------------------------------------- */
   $('#year').textContent = new Date().getFullYear();
 
-  // 人物悬停时才显示的双色调图，等首屏关键资源加载完再闲时取，
-  // 免得为了一个 hover 效果占用首屏带宽
-  const duo = $('.hero__duo');
-  if (duo && duo.dataset.src && !isTouch) {
-    const loadDuo = () => {
-      duo.src = duo.dataset.src;
-      duo.removeAttribute('data-src');
-      delete duo.dataset.src;
-    };
-    if ('requestIdleCallback' in window) {
-      setTimeout(() => requestIdleCallback(loadDuo, { timeout: 3000 }), 1200);
-    } else {
-      setTimeout(loadDuo, 1800);
-    }
-  }
+  // 注：人物图上的悬停效果已改为 WebGL 流体，见 assets/js/fluid.js
 
   // 占位链接不要跳走
   $$('a[href="#"]').forEach(a => a.addEventListener('click', e => e.preventDefault()));

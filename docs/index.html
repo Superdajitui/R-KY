@@ -113,15 +113,15 @@
       <div class="hero__portrait" data-parallax="0.02">
         <div class="hero__halo" aria-hidden="true"></div>
         <picture>
-          <source media="(max-width:820px)" srcset="assets/img/portrait-900.webp" type="image/webp">
-          <source srcset="assets/img/portrait-1400.webp" type="image/webp">
-          <img src="assets/img/portrait.png"
-               alt="任恺昱的证件照肖像"
-               width="796" height="1000"
+          <source media="(max-width:820px)" srcset="assets/img/hero-composite-900.webp" type="image/webp">
+          <source srcset="assets/img/hero-composite.webp" type="image/webp">
+          <img class="hero__img" src="assets/img/hero-composite.png"
+               alt="任恺昱戴着奥斯卡·皮亚斯特里 2025 美国大奖赛特别版「Retro Tech」头盔的肖像"
+               width="1115" height="1400"
                fetchpriority="high" decoding="async">
         </picture>
-        <!-- 双色调版本只在鼠标悬停时用到，交给 JS 闲时再加载，不占首屏带宽 -->
-        <img class="hero__duo" data-src="assets/img/portrait-duotone.webp" alt="" aria-hidden="true">
+        <!-- WebGL 流体效果就绪后，scripts 会在这里插入 canvas 并隐藏上面的静态图；
+             任何环节失败都保留静态图，不会白屏 -->
       </div>
 
       <div class="hero__foot">
@@ -299,5 +299,6 @@
 </footer>
 
 <script src="assets/js/main.js"></script>
+<script src="assets/js/fluid.js"></script>
 </body>
 </html>

@@ -20,16 +20,29 @@ import sharp from 'sharp';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 
-const [, , IN, OUTDIR] = process.argv;
+const positional = process.argv.slice(2).filter(a => !a.startsWith('--'));
+const [, , IN, OUTDIR] = ['', '', positional[0], positional[1]];
 if (!IN || !OUTDIR) {
-  console.error('用法: node tools/cutout.mjs <输入图> <输出目录>');
+  console.error('用法: node tools/cutout.mjs <输入图> <输出目录> [选项]');
+  console.error('  --name=helmet     输出文件名前缀（默认 portrait）');
+  console.error('  --no-fade         不做底部渐隐（头盔之类的独立物件用这个）');
+  console.error('  --fade=0.74       底部渐隐起始位置（0~1）');
+  console.error('  --dup-quality=92  输出质量');
   process.exit(1);
 }
+const arg = (k, d) => {
+  const hit = process.argv.slice(2).find(a => a.startsWith(`--${k}=`));
+  return hit ? hit.split('=').slice(1).join('=') : d;
+};
+const NAME = arg('name', 'portrait');
+const FADE_ARG = arg('fade', '0.74');
+const NO_FADE = process.argv.includes('--no-fade');
+const QUALITY = Number(arg('quality', '92'));
 
 // ---- 可调参数 ----------------------------------------------------------
-const T_GLOBAL = 52;    // 与参考背景色的最大加权距离
+const T_GLOBAL = Number(arg('tol', '52')); // 与参考背景色的最大加权距离
 const T_LOCAL = 16;     // 与已判定为背景的邻接像素的最大加权距离
-const SAT_MARGIN = 0.09;// 背景容许的额外饱和度（背景自身饱和度 + 此余量）
+const SAT_MARGIN = Number(arg('sat', '0.09')); // 背景容许的额外饱和度
 const OPEN_RADIUS = 3;  // 形态学开运算半径，用来清掉渗进主体的背景细缝
 const FEATHER_LO = 30;  // 颜色距离 <= 此值 => alpha 视为 0
 const FEATHER_HI = 120; // 颜色距离 >= 此值 => alpha 视为 1
@@ -57,6 +70,29 @@ const { data: src } = await image.raw().toBuffer({ resolveWithObject: true });
 const CH = 4;
 
 console.log(`输入: ${path.basename(IN)}  ${W}x${H}`);
+
+// --- 0. 先检查是否本来就带透明背景 -------------------------------------
+// 踩过的坑：有些素材（尤其是网上下载的 PNG/WebP）本身就是抠好的透明图。
+// 这时"自动识别背景色"会把边界上的透明像素读成 rgb(0,0,0) 黑色，
+// 然后泛洪顺着黑色把主体的暗部整个啃掉 —— 越描越黑。
+// 所以先看一眼：边界像素如果绝大多数已经是透明的，就直接拒绝运行。
+{
+  let borderTotal = 0, borderClear = 0;
+  const look = (x, y) => {
+    borderTotal++;
+    if (src[(y * W + x) * CH + 3] < 8) borderClear++;
+  };
+  for (let x = 0; x < W; x++) { look(x, 0); look(x, H - 1); }
+  for (let y = 0; y < H; y++) { look(0, y); look(W - 1, y); }
+  const ratio = borderClear / borderTotal;
+  if (ratio > 0.9) {
+    console.error(`\n✗ 这张图 ${(ratio * 100).toFixed(1)}% 的边界像素已经是透明的，`);
+    console.error('  说明它本身就是抠好的图，不需要再抠。');
+    console.error('  再跑一遍只会把主体暗部当成背景啃掉。');
+    console.error('\n  请改用: node tools/optimize.mjs <输入图> <输出目录> --name=xxx');
+    process.exit(2);
+  }
+}
 
 // --- 1. 选背景参考色：四条边框带里方差最小的那条 -----------------------
 const BAND = Math.max(2, Math.round(Math.min(W, H) * 0.012));
@@ -269,34 +305,39 @@ for (let y = 0; y < chh; y++) {
 // 原先用 CSS mask-image 做这件事，但 mask + filter + mix-blend-mode 叠在
 // 同一个元素上时，个别浏览器/驱动组合会把整块渲染成空白。
 // 烤进像素里就完全不依赖这些特性了，而且运行时还更省。
-const FADE_START = 0.74;  // 从这里开始淡出（与原来的 CSS mask 位置一致）
-const fadeFrom = Math.round(chh * FADE_START);
-for (let y = fadeFrom; y < chh; y++) {
-  const t = (y - fadeFrom) / Math.max(1, chh - 1 - fadeFrom); // 0 -> 1
-  // 缓入曲线，避免出现明显的"分界线"
-  const k = 1 - Math.pow(t, 1.35);
-  for (let x = 0; x < cw; x++) {
-    const i = (y * cw + x) * CH + 3;
-    cropped[i] = Math.round(cropped[i] * k);
+// 头盔这类独立物件不需要渐隐，用 --no-fade 关掉。
+if (NO_FADE) {
+  console.log('底部渐隐: 已关闭 (--no-fade)');
+} else {
+  const FADE_START = Number(FADE_ARG);
+  const fadeFrom = Math.round(chh * FADE_START);
+  for (let y = fadeFrom; y < chh; y++) {
+    const t = (y - fadeFrom) / Math.max(1, chh - 1 - fadeFrom); // 0 -> 1
+    // 缓入曲线，避免出现明显的"分界线"
+    const k = 1 - Math.pow(t, 1.35);
+    for (let x = 0; x < cw; x++) {
+      const i = (y * cw + x) * CH + 3;
+      cropped[i] = Math.round(cropped[i] * k);
+    }
   }
+  console.log(`底部渐隐: 从 ${fadeFrom}/${chh} 行开始`);
 }
-console.log(`底部渐隐: 从 ${fadeFrom}/${chh} 行开始`);
 
 // --- 7. 输出 ------------------------------------------------------------
 await mkdir(OUTDIR, { recursive: true });
 const base = sharp(cropped, { raw: { width: cw, height: chh, channels: CH } });
 
 // PNG 只作为不支持 WebP 时的兜底。
-// 带 alpha 的真彩 PNG 极占体积，这里降到 1000px 并做调色板量化。
+// 带 alpha 的真彩 PNG 极占体积，这里降尺寸并做调色板量化。
 await base.clone().resize({ height: 1000, fit: 'inside' })
   .png({ compressionLevel: 9, palette: true, quality: 88, effort: 8 })
-  .toFile(path.join(OUTDIR, 'portrait.png'));
+  .toFile(path.join(OUTDIR, `${NAME}.png`));
 // 桌面主图
 await base.clone().resize({ height: 1400, fit: 'inside' })
-  .webp({ quality: 92, alphaQuality: 100 }).toFile(path.join(OUTDIR, 'portrait-1400.webp'));
+  .webp({ quality: QUALITY, alphaQuality: 100 }).toFile(path.join(OUTDIR, `${NAME}-1400.webp`));
 // 窄屏用（移动端按 2~3 倍 DPR 算，900px 高足够，省一半流量）
 await base.clone().resize({ height: 900, fit: 'inside' })
-  .webp({ quality: 90, alphaQuality: 100 }).toFile(path.join(OUTDIR, 'portrait-900.webp'));
+  .webp({ quality: QUALITY - 2, alphaQuality: 100 }).toFile(path.join(OUTDIR, `${NAME}-900.webp`));
 
 // --- 8. 双色调版本（黑 -> 霓虹绿），用于 hover 效果 ---------------------
 const duo = Buffer.alloc(cw * chh * CH);
@@ -314,7 +355,7 @@ for (let p = 0; p < cw * chh; p++) {
 }
 await sharp(duo, { raw: { width: cw, height: chh, channels: CH } })
   .resize({ height: 1100, fit: 'inside' })
-  .webp({ quality: 88, alphaQuality: 100 })
-  .toFile(path.join(OUTDIR, 'portrait-duotone.webp'));
+  .webp({ quality: QUALITY - 4, alphaQuality: 100 })
+  .toFile(path.join(OUTDIR, `${NAME}-duotone.webp`));
 
 console.log('\n输出完成 ->', OUTDIR);
