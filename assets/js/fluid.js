@@ -285,10 +285,11 @@
     if (!texReady) { running = false; return; }
     resize();
 
-    // 离场且流场已衰减干净 → 停循环省电
+    // 离场且流场已衰减干净 → 停循环省电，同时把 canvas 淡出、交还给静态图
     energy *= 0.94;
     if (hover < 0.002 && hoverTarget === 0 && energy < 0.002) {
       running = false;
+      container.classList.remove('is-fluid');
       return;
     }
 
@@ -326,15 +327,49 @@
     if (running) return;
     if (!texReady || !resize()) return;
     running = true;
+    container.classList.add('is-fluid');   // 让 canvas 淡入接管
     requestAnimationFrame(render);
   }
 
   /* ---------------- 启动 ---------------- */
+  // 画一帧静止态，并**读回像素自检**。
+  // 有些显卡/驱动组合能创建上下文、能编译着色器，却什么都画不出来。
+  // 不检查的话，用户看到的会是一片空白 —— 而且因为 canvas 盖住了静态图，
+  // 照片会"凭空消失"。宁可退回静态图，也不能让主角不见。
+  function renderOk() {
+    drawStatic(0);
+    const w = canvas.width, h = canvas.height;
+    if (!w || !h) return false;
+
+    const N = 16;
+    const px = new Uint8Array(N * N * 4);
+    gl.readPixels(
+      Math.max(0, Math.floor(w / 2 - N / 2)),
+      Math.max(0, Math.floor(h / 2 - N / 2)),
+      N, N, gl.RGBA, gl.UNSIGNED_BYTE, px
+    );
+
+    // 画面正中央是脸，应该既"不透明"又"不黑"。
+    // 只判断非全零是不够的：着色器若输出黑色不透明，校验照样通过，
+    // 结果 canvas 把照片盖成一片黑 —— 比空白更糟。
+    let good = 0;
+    for (let i = 0; i < px.length; i += 4) {
+      if (px[i + 3] > 200 && (px[i] + px[i + 1] + px[i + 2]) > 90) good++;
+    }
+    return good >= (N * N) / 2;
+  }
+
   function start() {
     if (!resize()) { requestAnimationFrame(start); return; }
+
+    if (!renderOk()) {
+      console.warn('[fluid] WebGL 画不出内容，已保留静态图（不影响显示）');
+      canvas.remove();
+      return;
+    }
+
     container.insertBefore(canvas, container.firstChild);
     hover = 0; hoverTarget = 0; energy = 0;
-    drawStatic(0);                    // 静止态：和原图完全一致
     container.classList.add('is-webgl');
     console.log('[fluid] 流体效果已就绪');
   }
@@ -347,10 +382,10 @@
   canvas.addEventListener('webglcontextlost', (e) => {
     e.preventDefault();
     running = false;
-    container.classList.remove('is-webgl');
+    container.classList.remove('is-webgl', 'is-fluid');
     console.warn('[fluid] WebGL 上下文丢失，已退回静态图');
   });
 
-  // 支持 pointer 才启用（老浏览器直接静态图）
-  if (!window.PointerEvent) container.classList.remove('is-webgl');
+  // 不支持 pointer 事件的老浏览器直接静态图
+  if (!window.PointerEvent) container.classList.remove('is-webgl', 'is-fluid');
 })();

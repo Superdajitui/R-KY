@@ -277,10 +277,17 @@ em{font-style:normal}
 .hero__portrait .hero__img{display:block;width:100%;height:100%}
 .hero__portrait .hero__img{object-fit:contain}
 
-/* 流体 canvas：默认不显示，等 WebGL 初始化成功再顶上来 */
-.hero__canvas{display:none;width:100%;height:100%;position:relative;z-index:1}
+/* 流体 canvas 叠在静态图【之上】，而不是替换它 —— 这一点很关键：
+   万一 WebGL 在某块显卡/驱动上能初始化却画不出东西，静态图还在底下兜着，
+   照片不会凭空消失。canvas 只在鼠标悬停时淡入。
+   （早先的写法是 is-webgl 就把 picture 隐藏掉，等于把所有风险都压在 WebGL 上。） */
+.hero__canvas{
+  position:absolute;inset:0;width:100%;height:100%;
+  z-index:1;display:none;opacity:0;pointer-events:none;
+  transition:opacity .3s var(--ease);
+}
 .hero__portrait.is-webgl .hero__canvas{display:block}
-.hero__portrait.is-webgl picture{display:none}
+.hero__portrait.is-fluid .hero__canvas{opacity:1}
 .hero__halo{
   position:absolute;left:50%;top:34%;translate:-50% -50%;
   width:82%;aspect-ratio:1;border-radius:50%;

@@ -1,17 +1,17 @@
 /**
- * test-fluid.mjs — 验证首屏流体效果真的工作了
+ * test-fluid.mjs — 验证首屏流体效果，以及最关键的「照片不能消失」
  *
- * 不只是看页面能打开，而是真的用鼠标划过人物区域，
- * 抓下静止态 / 划过后 / 衰减后三个时刻的画面，确认：
- *   1. WebGL 初始化成功（容器拿到了 is-webgl）
- *   2. 静止态画面与原图一致（没有莫名其妙被推偏）
- *   3. 划过之后画面确实发生了变化
- *   4. 停止操作后会衰减回静止态
+ * 场景一（正常）：真的用鼠标划过人物，抓三个时刻，确认效果生效并能衰减。
+ * 场景二（退化）：把 drawArrays 打成空操作，模拟"WebGL 能初始化却画不出内容"。
+ *                这种情况下照片必须照样显示 —— 这是用户报过的问题，
+ *                也是最容易再次踩到的坑：早期写法是 WebGL 成功就隐藏静态图，
+ *                一旦 canvas 空白，照片就"凭空消失"。
  *
  * 用法: node tools/test-fluid.mjs [url]
  */
 import puppeteer from 'puppeteer-core';
 import { existsSync } from 'node:fs';
+import sharp from 'sharp';
 
 const URL_BASE = process.argv[2] || 'http://127.0.0.1:4321/';
 const EDGE = [
@@ -21,132 +21,156 @@ const EDGE = [
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-// 注意：不能加 --disable-gpu，否则 WebGL 拿不到上下文。
-// 无头模式下需要显式允许 SwiftShader 软件渲染。
-const browser = await puppeteer.launch({
-  executablePath: EDGE,
-  headless: 'new',
-  args: [
-    '--hide-scrollbars',
-    '--enable-unsafe-swiftshader',
-    '--use-gl=angle',
-    '--use-angle=swiftshader',
-    '--ignore-gpu-blocklist',
-  ],
-});
+// 不能加 --disable-gpu，否则 WebGL 拿不到上下文，测不到真正上线的那条路径
+const ARGS = [
+  '--hide-scrollbars',
+  '--enable-unsafe-swiftshader',
+  '--use-gl=angle',
+  '--use-angle=swiftshader',
+];
 
-const page = await browser.newPage();
-await page.setViewport({ width: 1440, height: 900 });
+let pass = 0, fail = 0;
+const check = (ok, label, detail = '') => {
+  console.log(`  ${ok ? '✓' : '✗'} ${label}${detail ? '  ' + detail : ''}`);
+  ok ? pass++ : fail++;
+};
 
-const problems = [];
-page.on('pageerror', e => problems.push(`JS 报错: ${e.message}`));
-page.on('console', m => {
-  const t = m.text();
-  if (m.type() === 'error') problems.push(`控制台错误: ${t}`);
-  if (t.includes('[fluid]')) console.log(`  ${t}`);
-});
+/** 人物区域的平均亮度。照片在 → 明显偏亮；整块空白 → 接近背景色 #111112 (17) */
+async function brightness(page, clip) {
+  const buf = await page.screenshot({ clip });
+  const st = await sharp(buf).stats();
+  return st.channels.slice(0, 3).reduce((s, c) => s + c.mean, 0) / 3;
+}
 
-await page.goto(URL_BASE, { waitUntil: 'networkidle0', timeout: 40000 });
-await sleep(3000);
+async function openPage(browser, stubDraw) {
+  const page = await browser.newPage();
+  await page.setViewport({ width: 1440, height: 900 });
+  if (stubDraw) {
+    // 必须在页面脚本之前注入：把绘制调用打成空操作，
+    // 就能复现"上下文正常、着色器正常，但画面什么都没有"
+    await page.evaluateOnNewDocument(() => {
+      const patch = (proto) => {
+        if (!proto) return;
+        proto.drawArrays = function () {};
+        proto.drawElements = function () {};
+      };
+      patch(window.WebGLRenderingContext && WebGLRenderingContext.prototype);
+      patch(window.WebGL2RenderingContext && WebGL2RenderingContext.prototype);
+    });
+  }
+  const errs = [];
+  page.on('pageerror', e => errs.push(e.message));
+  page.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
+  await page.goto(URL_BASE, { waitUntil: 'networkidle0', timeout: 40000 });
+  await sleep(3000);
+  return { page, errs };
+}
 
-/* ---------- 1. WebGL 是否初始化成功 ---------- */
+const browser = await puppeteer.launch({ executablePath: EDGE, headless: 'new', args: ARGS });
+
+/* ═══════════ 场景一：正常 ═══════════ */
+console.log('\n════ 场景一：正常运行 ════');
+const { page, errs } = await openPage(browser, false);
+page.on('console', m => { if (m.text().includes('[fluid]')) console.log(`  ${m.text()}`); });
+await sleep(300);
+
 const state = await page.evaluate(() => {
   const c = document.querySelector('.hero__portrait');
   const cv = document.querySelector('.hero__canvas');
   const pic = document.querySelector('.hero__portrait picture');
+  const r = c.getBoundingClientRect();
   return {
-    hasClass: c?.classList.contains('is-webgl') || false,
+    hasClass: c.classList.contains('is-webgl'),
     canvasExists: !!cv,
     canvasSize: cv ? `${cv.width}x${cv.height}` : '无',
-    canvasDisplay: cv ? getComputedStyle(cv).display : '无',
-    // 要看 <picture> 的 display，不能看里面的 <img> ——
-    // 祖先 display:none 时，后代自身的计算样式仍然是 block
+    // 关键：静态图必须始终可见，它是 canvas 画不出来时的兜底
     pictureDisplay: pic ? getComputedStyle(pic).display : '无',
-    portraitBox: c ? (() => { const r = c.getBoundingClientRect(); return `${r.width.toFixed(0)}x${r.height.toFixed(0)}`; })() : '无',
+    box: { x: r.left, y: r.top, w: r.width, h: r.height },
   };
 });
 
-console.log('\n初始化');
-console.log(`  is-webgl 类:     ${state.hasClass ? '✓' : '✗'}`);
-console.log(`  canvas:          ${state.canvasExists ? '✓' : '✗'}  尺寸 ${state.canvasSize}  display=${state.canvasDisplay}`);
-console.log(`  静态 picture:    display=${state.pictureDisplay}`);
-console.log(`  人物容器尺寸:    ${state.portraitBox}`);
-
-/* ---------- 2. 抓三个时刻的画面 ---------- */
-const box = await page.evaluate(() => {
-  const r = document.querySelector('.hero__portrait').getBoundingClientRect();
-  return { x: r.left, y: r.top, w: r.width, h: r.height };
-});
-
 const clip = {
-  x: Math.max(0, Math.round(box.x)),
-  y: Math.max(0, Math.round(box.y)),
-  width: Math.round(box.w),
-  height: Math.round(Math.min(box.h, 900 - box.y)),
+  x: Math.max(0, Math.round(state.box.x)),
+  y: Math.max(0, Math.round(state.box.y)),
+  width: Math.round(state.box.w),
+  height: Math.round(Math.min(state.box.h, 900 - state.box.y)),
 };
 
-// 指纹取自「截图本身」而不是读 canvas：
-// WebGL 默认 preserveDrawingBuffer=false，合成后缓冲就被清了，
-// drawImage 读回来是全黑，判断不出任何变化。
-async function grab(name) {
-  const buf = await page.screenshot({ path: `tools/shots/fluid-${name}.png`, clip });
+console.log(`  is-webgl=${state.hasClass}  canvas=${state.canvasSize}  picture=${state.pictureDisplay}`);
+const bIdle = await brightness(page, clip);
+console.log(`  静止态亮度: ${bIdle.toFixed(1)}`);
+
+const hashShot = async () => {
+  const b = await page.screenshot({ clip });
   let h = 2166136261;
-  for (let i = 0; i < buf.length; i += 7) {
-    h ^= buf[i];
-    h = Math.imul(h, 16777619) >>> 0;
-  }
+  for (let i = 0; i < b.length; i += 7) { h ^= b[i]; h = Math.imul(h, 16777619) >>> 0; }
   return h;
-}
+};
+const hIdle = await hashShot();
 
-const hIdle = await grab('1-idle');
-console.log(`\n静止态指纹: ${hIdle}`);
-
-// 在人物区域里来回划动
-const cx = box.x + box.w / 2;
-const cy = box.y + box.h * 0.45;
-await page.mouse.move(cx - box.w * 0.28, cy - 60);
-await sleep(120);
-for (let i = 0; i <= 22; i++) {
-  const t = i / 22;
-  await page.mouse.move(
-    cx - box.w * 0.28 + box.w * 0.56 * t,
-    cy - 60 + Math.sin(t * Math.PI * 2) * 90
-  );
+const cx = state.box.x + state.box.w / 2;
+const cy = state.box.y + state.box.h * 0.45;
+for (let i = 0; i <= 20; i++) {
+  const t = i / 20;
+  await page.mouse.move(cx - state.box.w * 0.26 + state.box.w * 0.52 * t,
+                        cy - 55 + Math.sin(t * Math.PI * 2) * 85);
   await sleep(22);
 }
 await sleep(80);
-const hMoving = await grab('2-moving');
-await page.screenshot({ path: 'tools/shots/fluid-hero-moving.png' });   // 整屏，看构图
-console.log(`划过中指纹: ${hMoving}`);
+const hMove = await hashShot();
+await page.screenshot({ path: 'tools/shots/fluid-hero-moving.png' });
+const bMove = await brightness(page, clip);
 
-// 等它衰减
 await page.mouse.move(10, 10);
 await sleep(3200);
-const hAfter = await grab('3-after');
-console.log(`衰减后指纹: ${hAfter}`);
+const hAfter = await hashShot();
 
-/* ---------- 3. 判定 ---------- */
-console.log('\n判定');
-const checks = [
-  [state.hasClass, 'WebGL 初始化成功'],
-  [state.canvasExists, 'canvas 已插入 DOM'],
-  [state.pictureDisplay === 'none', '静态图已让位给 canvas'],
-  // 注意：画面变化必须以 WebGL 成功为前提。
-  // 否则视差、入场动画本身就会让截图不同，得到假阳性。
-  [state.hasClass && hMoving !== hIdle, '鼠标划过后画面确实变化了'],
-  [state.hasClass && hAfter !== hMoving, '停止操作后画面继续衰减'],
-];
-let pass = 0;
-for (const [ok, label] of checks) {
-  console.log(`  ${ok ? '✓' : '✗'} ${label}`);
-  if (ok) pass++;
-}
-console.log(`\n${pass}/${checks.length} 通过`);
-if (problems.length) {
-  console.log('\n问题:');
-  [...new Set(problems)].forEach(p => console.log(`  ✗ ${p}`));
-}
-console.log('\n截图: tools/shots/fluid-1-idle.png / fluid-2-moving.png / fluid-3-after.png');
+console.log('\n  判定');
+check(state.hasClass, 'WebGL 初始化成功（含像素自检）');
+check(state.pictureDisplay !== 'none', '静态图始终可见（兜底防线）');
+check(bIdle > 60, '静止态人物清晰可见', `亮度 ${bIdle.toFixed(1)}`);
+check(bMove > 60, '划过时人物依然可见', `亮度 ${bMove.toFixed(1)}`);
+check(hMove !== hIdle, '鼠标划过后画面确实变化了');
+check(hAfter !== hMove, '停止操作后画面继续衰减');
+await page.close();
+
+/* ═══════════ 场景二：WebGL 画不出内容 ═══════════ */
+console.log('\n════ 场景二：WebGL 能初始化但画不出内容（模拟故障）════');
+const deg = await openPage(browser, true);
+
+const dState = await deg.page.evaluate(() => {
+  const c = document.querySelector('.hero__portrait');
+  const cv = document.querySelector('.hero__canvas');
+  const pic = document.querySelector('.hero__portrait picture');
+  const r = c.getBoundingClientRect();
+  return {
+    hasClass: c.classList.contains('is-webgl'),
+    canvasStillThere: !!cv,
+    pictureDisplay: pic ? getComputedStyle(pic).display : '无',
+    box: { x: r.left, y: r.top, w: r.width, h: r.height },
+  };
+});
+const dClip = {
+  x: Math.max(0, Math.round(dState.box.x)),
+  y: Math.max(0, Math.round(dState.box.y)),
+  width: Math.round(dState.box.w),
+  height: Math.round(Math.min(dState.box.h, 900 - dState.box.y)),
+};
+const dBright = await brightness(deg.page, dClip);
+await deg.page.screenshot({ path: 'tools/shots/fluid-degraded.png' });
+
+console.log(`  is-webgl=${dState.hasClass}  picture=${dState.pictureDisplay}  亮度=${dBright.toFixed(1)}`);
+check(!dState.hasClass, '自检识别出画不出内容，未启用流体');
+check(dState.pictureDisplay !== 'none', '静态图未被隐藏');
+check(dBright > 60, '照片照常显示，没有变空白', `亮度 ${dBright.toFixed(1)}`);
+
+const errsAll = [...errs, ...deg.errs].filter(e => !/favicon/i.test(e));
+check(errsAll.length === 0, '无 JS 报错', errsAll.slice(0, 2).join(' | '));
 
 await browser.close();
-process.exit(pass === checks.length && problems.length === 0 ? 0 : 1);
+
+console.log(`\n${'─'.repeat(52)}`);
+console.log(fail === 0 ? `✓ 全部通过（${pass} 项）` : `✗ ${fail} 项未通过，${pass} 项通过`);
+console.log(`截图: tools/shots/fluid-hero-moving.png / fluid-degraded.png`);
+console.log('─'.repeat(52));
+process.exit(fail === 0 ? 0 : 1);
