@@ -11,6 +11,7 @@
     "test:subpath": "node tools/test-subpath.mjs",
     "test:fluid": "node tools/test-fluid.mjs",
     "verify:live": "node tools/verify-live.mjs",
+    "peek:live": "node tools/peek-live.mjs",
     "compose": "node tools/compose-hero.mjs",
     "grid": "node tools/grid.mjs",
     "shot": "node tools/shoot.mjs",
