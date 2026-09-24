@@ -74,7 +74,7 @@ console.log('首页');
 check(s.title.includes('任恺昱'), '标题正确', s.title);
 check(s.ready, '预加载揭幕完成');
 check(s.imgLoaded, '照片已加载', s.imgSrc);
-check(s.imgSrc.includes('hero-composite'), '取用的是戴头盔的合成图', s.imgSrc);
+check(s.imgSrc.includes('hero-composite'), '取用的是首屏合成图', s.imgSrc);
 check(s.wordOpacity === '1', '首屏大字名可见');
 check(s.fontAnton, 'Anton 字体（英文大字）已加载');
 check(s.fontInter, 'Inter 字体（正文）已加载');
