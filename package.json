@@ -1,0 +1,24 @@
+{
+  "name": "kerry-ren-personal-site",
+  "version": "1.0.0",
+  "private": true,
+  "description": "任恺昱 Kerry R 的个人网站 —— 零依赖前端，纯手写 HTML/CSS/JS",
+  "type": "module",
+  "scripts": {
+    "start": "node tools/serve.mjs 4321",
+    "preview:docs": "node tools/serve.mjs 4322 --root=docs --prefix=/R-KY",
+    "build": "node tools/build.mjs",
+    "test:subpath": "node tools/test-subpath.mjs",
+    "shot": "node tools/shoot.mjs",
+    "inspect": "node tools/inspect.mjs",
+    "og": "node tools/og.mjs",
+    "cutout": "node tools/cutout.mjs \"%USERPROFILE%/Desktop/证件照.jpg\" assets/img",
+    "preview": "node tools/preview.mjs"
+  },
+  "devDependencies": {
+    "@fontsource/anton": "^5.3.0",
+    "@fontsource/inter": "^5.3.0",
+    "puppeteer-core": "^25.12.0",
+    "sharp": "^0.35.4"
+  }
+}

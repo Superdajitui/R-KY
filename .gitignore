@@ -1,0 +1,18 @@
+# 依赖与构建产物 —— 不需要进仓库
+node_modules/
+
+# 开发截图与质检输出
+tools/shots/
+
+# 旧的构建目录名（历史遗留，防止误提交）
+dist/
+
+# 系统杂项
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 编辑器
+.vscode/
+.idea/
+*.log

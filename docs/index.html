@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="no-js">
+<head>
+<meta charset="UTF-8">
+<!-- 渐进增强：先标记 JS 可用，再决定要不要隐藏待入场元素。
+     这样即使脚本被禁用或加载失败，整站内容依然完整可读。 -->
+<script>document.documentElement.className='js'</script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>任恺昱 Kerry R — 学生 / 开发者 / 创作者</title>
+<meta name="description" content="任恺昱（Kerry R）的个人网站 —— 学生、开发者、创作者。把想法做成能跑的东西。">
+<meta name="theme-color" content="#111112">
+
+<!-- 社交分享预览（微信 / QQ / Twitter 抓取的就是这几条）。
+     og:image 必须是绝对地址才可靠，打包时 tools/build.mjs 会按真实域名补全。 -->
+<meta property="og:type" content="profile">
+<meta property="og:title" content="任恺昱 Kerry R — 学生 / 开发者 / 创作者">
+<meta property="og:description" content="把想法做成能跑的东西。">
+<meta property="og:image" content="https://superdajitui.github.io/R-KY/assets/img/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="zh_CN">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="任恺昱 Kerry R — 学生 / 开发者 / 创作者">
+<meta name="twitter:description" content="把想法做成能跑的东西。">
+<meta name="twitter:image" content="https://superdajitui.github.io/R-KY/assets/img/og.jpg">
+
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='18' fill='%23111112'/><text x='50' y='72' font-size='68' font-family='Arial Black,Arial' font-weight='900' fill='%23d2ff00' text-anchor='middle'>K</text></svg>">
+
+<link rel="preload" href="assets/fonts/anton-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/inter-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="assets/css/style.css">
+<noscript><style>
+  /* 无脚本兜底：不让预加载遮罩挡住内容，一切静态可见 */
+  .loader,.cursor,.grain,.progress{display:none!important}
+  .hero__eyebrow,.hero__word,.hero__portrait,.hero__foot{opacity:1!important}
+</style></noscript>
+<link rel="canonical" href="https://superdajitui.github.io/R-KY/">
+</head>
+<body>
+
+<!-- ══════════ 预加载遮罩 ══════════ -->
+<div class="loader" id="loader">
+  <div class="loader__inner">
+    <div class="loader__num" id="loaderNum">00</div>
+    <div class="loader__bar"><i id="loaderBar"></i></div>
+    <div class="loader__label">任恺昱 · KERRY R</div>
+  </div>
+</div>
+
+<!-- 滚动进度条 -->
+<div class="progress" id="progress"></div>
+
+<!-- 颗粒质感覆盖层 -->
+<div class="grain" aria-hidden="true"></div>
+
+<!-- 自定义光标 -->
+<div class="cursor" id="cursor" aria-hidden="true"><span class="cursor__dot"></span></div>
+
+<!-- ══════════ 导航 ══════════ -->
+<header class="nav" id="nav">
+  <a class="nav__logo" href="#top" aria-label="回到顶部">
+    <span class="nav__mark">K</span>
+    <span class="nav__name">任恺昱<em>Kerry R</em></span>
+  </a>
+
+  <nav class="nav__links" aria-label="主导航">
+    <a href="#about"><span data-scramble>关于</span></a>
+    <a href="#work"><span data-scramble>项目</span></a>
+    <a href="#skills"><span data-scramble>技能</span></a>
+    <a href="#contact"><span data-scramble>联系</span></a>
+  </nav>
+
+  <a class="btn btn--neon nav__cta" href="#contact" data-cursor="lg">
+    <span>聊聊 →</span>
+  </a>
+
+  <button class="nav__burger" id="burger" aria-label="打开菜单" aria-expanded="false">
+    <i></i><i></i>
+  </button>
+</header>
+
+<!-- 移动端菜单 -->
+<div class="menu" id="menu">
+  <a href="#about"><b>01</b>关于</a>
+  <a href="#work"><b>02</b>项目</a>
+  <a href="#skills"><b>03</b>技能</a>
+  <a href="#contact"><b>04</b>联系</a>
+</div>
+
+<main id="top">
+
+  <!-- ══════════ 首屏 ══════════ -->
+  <section class="hero" id="hero">
+    <div class="hero__grid" aria-hidden="true">
+      <i></i><i></i><i></i><i></i>
+    </div>
+    <div class="hero__glow" aria-hidden="true"></div>
+
+    <div class="hero__stage">
+      <!-- 名字后半截在人物之后，前半截压在人物之上 —— 制造纵深 -->
+      <p class="hero__eyebrow">
+        <span class="dot"></span>学生 · 开发者 · 创作者
+      </p>
+
+      <h1 class="hero__title">
+        <span class="hero__word hero__word--top" data-parallax="-0.06">KERRY</span>
+
+        <span class="hero__word hero__word--bottom" data-parallax="0.05">
+          <span class="hero__cn">任恺昱</span>
+        </span>
+      </h1>
+
+      <div class="hero__portrait" data-parallax="0.02">
+        <div class="hero__halo" aria-hidden="true"></div>
+        <picture>
+          <source media="(max-width:820px)" srcset="assets/img/portrait-900.webp" type="image/webp">
+          <source srcset="assets/img/portrait-1400.webp" type="image/webp">
+          <img src="assets/img/portrait.png"
+               alt="任恺昱的证件照肖像"
+               width="796" height="1000"
+               fetchpriority="high" decoding="async">
+        </picture>
+        <!-- 双色调版本只在鼠标悬停时用到，交给 JS 闲时再加载，不占首屏带宽 -->
+        <img class="hero__duo" data-src="assets/img/portrait-duotone.webp" alt="" aria-hidden="true">
+      </div>
+
+      <div class="hero__foot">
+        <p class="hero__tagline">
+          把想法做成<em>能跑的东西</em>。
+        </p>
+        <div class="hero__meta">
+          <span class="hero__badge"><i></i>开放合作</span>
+          <a class="hero__scroll" href="#about">
+            <span>向下滚动</span>
+            <svg viewBox="0 0 12 26" aria-hidden="true"><path d="M6 0v22M1 17l5 6 5-6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ 跑马灯 ══════════ -->
+  <div class="marquee" aria-hidden="true">
+    <div class="marquee__track">
+      <span>学生 <b>✦</b> 开发者 <b>✦</b> 创作者 <b>✦</b> STUDENT <b>✦</b> DEVELOPER <b>✦</b> CREATOR <b>✦</b> </span>
+      <span>学生 <b>✦</b> 开发者 <b>✦</b> 创作者 <b>✦</b> STUDENT <b>✦</b> DEVELOPER <b>✦</b> CREATOR <b>✦</b> </span>
+    </div>
+  </div>
+
+  <!-- ══════════ 数据档案 ══════════ -->
+  <section class="stats" id="stats">
+    <div class="wrap">
+      <p class="sec__label" data-reveal><i>01</i> 档案 / PROFILE</p>
+      <div class="stats__row">
+        <div class="stat" data-reveal>
+          <div class="stat__num"><span data-count="4">0</span></div>
+          <div class="stat__key">项目<em>PROJECTS</em></div>
+        </div>
+        <div class="stat" data-reveal>
+          <div class="stat__num"><span data-count="8">0</span></div>
+          <div class="stat__key">技能<em>SKILLS</em></div>
+        </div>
+        <div class="stat" data-reveal>
+          <div class="stat__num"><span data-count="3">0</span></div>
+          <div class="stat__key">语言<em>LANGUAGES</em></div>
+        </div>
+        <div class="stat" data-reveal>
+          <div class="stat__num"><span data-count="24">0</span><small>/7</small></div>
+          <div class="stat__key">在线<em>ALWAYS ON</em></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ 关于 ══════════ -->
+  <section class="about" id="about">
+    <div class="wrap about__wrap">
+      <div class="about__left">
+        <p class="sec__label" data-reveal><i>02</i> 关于我 / ABOUT</p>
+        <h2 class="sec__title" data-reveal>
+          白天拆解<em>系统</em>，<br>夜里搭建<em>系统</em>。
+        </h2>
+      </div>
+
+      <div class="about__right">
+        <p data-reveal>
+          我是任恺昱，一名学生、开发者和创作者。我喜欢把抽象的想法变成
+          真的能跑起来的东西 —— 从 MATLAB 的仿真模型，到一个可以点击的界面。
+        </p>
+        <p data-reveal>
+          我相信好的工程和好的设计其实是同一种手艺：克制、准确、恰到好处。
+          多余的东西不是风格，是噪音。
+        </p>
+        <p class="about__en" data-reveal>
+          I'm Kerry R — a student, developer and creator. I turn abstract ideas
+          into things that actually run, from simulation models to interfaces
+          you can click. Good engineering and good design, to me, are the same
+          craft: restrained, precise, deliberate.
+        </p>
+
+        <ul class="about__facts" data-reveal>
+          <li><b>方向</b> 电气 / 自动化 · 仿真与控制</li>
+          <li><b>工具</b> MATLAB · Python · C/C++ · JavaScript</li>
+          <li><b>状态</b> 在读学生 · 开放实习与合作</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ 项目 ══════════ -->
+  <section class="work" id="work">
+    <div class="wrap">
+      <p class="sec__label" data-reveal><i>03</i> 项目 / SELECTED WORK</p>
+      <h2 class="sec__title" data-reveal>做过的一些<em>东西</em>。</h2>
+
+      <div class="cards">
+        <a class="card" href="#" data-cursor="lg" data-reveal>
+          <span class="card__idx">01</span>
+          <h3 class="card__title">省创仿真平台</h3>
+          <p class="card__desc">系统建模与仿真，参数扫描与结果可视化。用模型代替试错。</p>
+          <ul class="card__tags"><li>MATLAB</li><li>Simulink</li><li>仿真</li></ul>
+          <span class="card__arrow">↗</span>
+        </a>
+
+        <a class="card" href="#" data-cursor="lg" data-reveal>
+          <span class="card__idx">02</span>
+          <h3 class="card__title">个人网站 v1</h3>
+          <p class="card__desc">你正在看的这个页面。零框架、零依赖、手写每一行动效。</p>
+          <ul class="card__tags"><li>HTML</li><li>CSS</li><li>JavaScript</li></ul>
+          <span class="card__arrow">↗</span>
+        </a>
+
+        <a class="card" href="#" data-cursor="lg" data-reveal>
+          <span class="card__idx">03</span>
+          <h3 class="card__title">课程设计合集</h3>
+          <p class="card__desc">数据结构与算法的练习仓库，从链表到图，一行行敲出来的基本功。</p>
+          <ul class="card__tags"><li>C</li><li>Python</li><li>算法</li></ul>
+          <span class="card__arrow">↗</span>
+        </a>
+
+        <a class="card" href="#" data-cursor="lg" data-reveal>
+          <span class="card__idx">04</span>
+          <h3 class="card__title">电路仿真实验</h3>
+          <p class="card__desc">模拟电路搭建与验证，把课本上的公式接上真实的元器件。</p>
+          <ul class="card__tags"><li>Multisim</li><li>模电</li><li>实验</li></ul>
+          <span class="card__arrow">↗</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ 技能 ══════════ -->
+  <section class="skills" id="skills">
+    <div class="wrap">
+      <p class="sec__label" data-reveal><i>04</i> 技能 / TOOLKIT</p>
+      <h2 class="sec__title" data-reveal>手上的<em>工具箱</em>。</h2>
+
+      <ul class="skills__list">
+        <li data-reveal><b>MATLAB / Simulink</b><span>建模 · 仿真 · 数据分析</span><i style="--lv:88%"></i></li>
+        <li data-reveal><b>Python</b><span>脚本 · 数据处理 · 自动化</span><i style="--lv:78%"></i></li>
+        <li data-reveal><b>C / C++</b><span>算法 · 数据结构 · 嵌入式基础</span><i style="--lv:72%"></i></li>
+        <li data-reveal><b>HTML / CSS / JavaScript</b><span>前端界面 · 动效 · 响应式</span><i style="--lv:80%"></i></li>
+        <li data-reveal><b>Multisim</b><span>电路仿真 · 实验验证</span><i style="--lv:70%"></i></li>
+        <li data-reveal><b>Git / GitHub</b><span>版本管理 · 协作</span><i style="--lv:75%"></i></li>
+        <li data-reveal><b>Photoshop</b><span>图像处理 · 视觉素材</span><i style="--lv:65%"></i></li>
+        <li data-reveal><b>英语</b><span>技术文档阅读 · 写作</span><i style="--lv:76%"></i></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ══════════ 联系 ══════════ -->
+  <section class="contact" id="contact">
+    <div class="contact__glow" aria-hidden="true"></div>
+    <div class="wrap">
+      <p class="sec__label" data-reveal><i>05</i> 联系 / CONTACT</p>
+      <h2 class="contact__big" data-reveal>一起做点<br><em>好玩的</em>东西？</h2>
+
+      <div class="contact__row" data-reveal>
+        <a class="btn btn--neon btn--big" href="mailto:hello@example.com" data-cursor="lg">
+          <span>hello@example.com</span>
+        </a>
+        <a class="btn btn--ghost btn--big" href="#" data-cursor="lg"><span>GitHub ↗</span></a>
+      </div>
+
+      <p class="contact__note" data-reveal>
+        目前开放实习、合作与任何有趣的技术讨论。回信通常不超过 24 小时。
+      </p>
+    </div>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap foot__wrap">
+    <span>© <span id="year">2025</span> 任恺昱 Kerry R</span>
+    <span class="foot__mid">手写 HTML · CSS · JavaScript</span>
+    <a href="#top" data-cursor="lg">回到顶部 ↑</a>
+  </div>
+</footer>
+
+<script src="assets/js/main.js"></script>
+</body>
+</html>

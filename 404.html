@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="no-js">
+<head>
+<meta charset="UTF-8">
+<script>document.documentElement.className='js'</script>
+<!--BUILD:BASE-->
+<!--
+  注意：这个页面可能出现在站点的任意子路径下（/R-KY/什么什么/），
+  所以里面的资源路径必须是"相对站点根目录"而不是"相对当前页面"，
+  否则样式表会 404、整页变成白底黑字。
+  打包时 tools/build.mjs 会把上面的标记替换成 <base href="/仓库名/">，
+  一次性解决样式表加载和"回到首页"链接两个问题。
+-->
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>页面走丢了 — 任恺昱 Kerry R</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#111112">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='18' fill='%23111112'/><text x='50' y='72' font-size='68' font-family='Arial Black,Arial' font-weight='900' fill='%23d2ff00' text-anchor='middle'>K</text></svg>">
+<link rel="stylesheet" href="assets/css/style.css">
+<style>
+  .nf{min-height:100svh;display:grid;place-items:center;text-align:center;padding:2rem;position:relative;overflow:hidden}
+  .nf__glow{position:absolute;left:50%;top:50%;translate:-50% -50%;width:min(120vw,900px);aspect-ratio:1;
+    background:radial-gradient(circle,rgba(210,255,0,.14),transparent 62%);filter:blur(20px);pointer-events:none}
+  .nf__inner{position:relative;z-index:1;max-width:38rem}
+  .nf__code{font-family:var(--f-display);font-size:clamp(6rem,26vw,14rem);line-height:.85;color:var(--neon);letter-spacing:.02em}
+  .nf__title{font-family:var(--f-cn);font-weight:800;font-size:clamp(1.3rem,4vw,2rem);margin:.5rem 0 1rem}
+  .nf__text{color:var(--mute);margin-bottom:2rem;font-size:.95rem}
+  .nf__actions{display:flex;gap:.8rem;justify-content:center;flex-wrap:wrap}
+</style>
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+  <main class="nf">
+    <div class="nf__glow" aria-hidden="true"></div>
+    <div class="nf__inner">
+      <div class="nf__code">404</div>
+      <h1 class="nf__title">这个页面不存在</h1>
+      <p class="nf__text">
+        链接可能打错了，或者这个页面已经被移走。<br>
+        The page you're looking for doesn't exist.
+      </p>
+      <div class="nf__actions">
+        <a class="btn btn--neon" href="./"><span>回到首页 ←</span></a>
+        <a class="btn btn--ghost" href="mailto:hello@example.com"><span>告诉我链接坏了</span></a>
+      </div>
+    </div>
+  </main>
+</body>
+</html>
