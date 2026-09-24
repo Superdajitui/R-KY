@@ -100,6 +100,44 @@ console.log(`  is-webgl=${state.hasClass}  canvas=${state.canvasSize}  picture=$
 const bIdle = await brightness(page, clip);
 console.log(`  静止态亮度: ${bIdle.toFixed(1)}`);
 
+/* ---- 光晕层级：脸不能被绿光糊住 ----
+   比对这个区域「页面渲染出来的颜色」和「源图的颜色」。
+   如果 .hero__halo 盖在了图片上面（CSS 绘制顺序的坑：定位元素会画在
+   静态定位元素之上），脸会整体偏绿，两者就对不上了。 */
+/** 区域颜色统计。
+ *  ⚠ sharp 的 stats() 只统计「输入图」，会忽略 extract 等管线操作 ——
+ *  直接写 sharp(src).extract(box).stats() 拿到的是整图统计，
+ *  换任何取样框结果都一样，极具迷惑性。必须先 toBuffer() 落地。 */
+async function regionStats(src, box) {
+  const buf = await sharp(src).extract(box).toBuffer();
+  return sharp(buf).stats();
+}
+
+const FACE = { rx: 0.34, ry: 0.36, rw: 0.12, rh: 0.10 };   // 脸颊，相对人物图的比例
+const srcMeta = await sharp('src/portrait-1400.webp').metadata();
+const srcStats = await regionStats('src/portrait-1400.webp', {
+  left: Math.round(FACE.rx * srcMeta.width),
+  top: Math.round(FACE.ry * srcMeta.height),
+  width: Math.round(FACE.rw * srcMeta.width),
+  height: Math.round(FACE.rh * srcMeta.height),
+});
+const pageStats = await regionStats(await page.screenshot({ clip }), {
+  left: Math.round(FACE.rx * clip.width),
+  top: Math.round(FACE.ry * clip.height),
+  width: Math.round(FACE.rw * clip.width),
+  height: Math.round(FACE.rh * clip.height),
+});
+
+const srcRGB = srcStats.channels.slice(0, 3).map(c => c.mean);
+const pageRGB = pageStats.channels.slice(0, 3).map(c => c.mean);
+const diff = srcRGB.map((v, i) => Math.abs(v - pageRGB[i]));
+const maxDiff = Math.max(...diff);
+const greenShift = (pageRGB[1] - srcRGB[1]) - (pageRGB[0] - srcRGB[0]);   // 绿相对红的额外增益
+
+console.log(`  源图脸颊 RGB:   ${srcRGB.map(v => v.toFixed(0)).join(' / ')}`);
+console.log(`  页面脸颊 RGB:   ${pageRGB.map(v => v.toFixed(0)).join(' / ')}`);
+console.log(`  最大偏差:       ${maxDiff.toFixed(1)}   绿相对增益: ${greenShift.toFixed(1)}`);
+
 const hashShot = async () => {
   const b = await page.screenshot({ clip });
   let h = 2166136261;
@@ -129,6 +167,9 @@ console.log('\n  判定');
 check(state.hasClass, 'WebGL 初始化成功（含像素自检）');
 check(state.pictureDisplay !== 'none', '静态图始终可见（兜底防线）');
 check(bIdle > 60, '静止态人物清晰可见', `亮度 ${bIdle.toFixed(1)}`);
+// 光晕必须留在人物身后：脸部的渲染色要和源图一致，不能被绿光染上去
+check(maxDiff < 14, '脸部颜色与源图一致（绿光没有糊到脸上）', `最大偏差 ${maxDiff.toFixed(1)}`);
+check(greenShift < 8, '没有额外的绿色偏移', `绿增益 ${greenShift.toFixed(1)}`);
 check(bMove > 60, '划过时人物依然可见', `亮度 ${bMove.toFixed(1)}`);
 check(hMove !== hIdle, '鼠标划过后画面确实变化了');
 check(hAfter !== hMove, '停止操作后画面继续衰减');
