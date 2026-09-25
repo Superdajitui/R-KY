@@ -108,7 +108,13 @@ em{font-style:normal}
 /* 颗粒质感 —— 让大面积黑不死板 */
 .grain{position:fixed;inset:0;z-index:9000;pointer-events:none;opacity:.05;mix-blend-mode:overlay}
 .grain::after{
-  content:'';position:absolute;inset:-150%;width:400%;height:400%;
+  /* 尺寸只要比视口大一圈就够：动画最大位移是自身尺寸的 6%（120% × 6% = 7.2%），
+     四周各留 10% 就不会露边。
+     原来是 inset:-150% + 400%×400%，也就是视口的 16 倍 ——
+     手机上 390×844 @DPR3 算下来是 4700 万像素的一层纹理，显存和栅格化直接爆掉。
+     这是移动端掉帧的头号嫌疑，虽然本地无头环境量不出主线程开销
+     （手机用的是 TBDR 架构，吃的是显存带宽，不是主线程）。 */
+  content:'';position:absolute;inset:-10%;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   animation:grain 6s steps(6) infinite;
 }
@@ -350,6 +356,10 @@ body.is-ready .welcome__foot{opacity:1}
 /* 欢迎页期间先把导航和进度条收起来，保持开场干净 */
 body.at-welcome .nav{transform:translateY(-105%);opacity:0;pointer-events:none}
 body.at-welcome .progress{opacity:0}
+/* 被 main 完全盖住之后就摘掉开场页这一层（见 main.js 的说明）：
+   它是 fixed 全屏 + 视差，合成器一直保留着它纯属浪费。
+   阈值取得比"完全盖住"再往后一点（1.02 屏），避免临界处闪一下。 */
+body.past-welcome .welcome{visibility:hidden}
 
 /* 占位块把主页顶下去一整屏，于是主页从下方滑上来盖住欢迎页。
    用独立的占位元素而不是给 main 加 margin-top ——
@@ -385,11 +395,21 @@ main{position:relative;z-index:2;background:var(--ink)}
   font-size:clamp(.68rem,1.5vw,.8rem);letter-spacing:.3em;text-transform:uppercase;
   color:#c9ccd0;white-space:nowrap;
 }
-.hero__eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--neon);box-shadow:0 0 0 0 var(--neon);animation:pulse 2.2s infinite}
+/* 首屏身份标签上的小圆点。
+   原来用 @keyframes 动 box-shadow（0 → 12px 扩散）做脉冲 ——
+   box-shadow 不走合成器，浏览器只能每帧重绘，而且这是条 2.2 秒无限循环、
+   永远在跑。手机上正好落在用户反馈卡顿的那一屏。
+   改成"一个圆环自己放大淡出"，只用 transform + opacity，全程交给合成器。 */
+.hero__eyebrow .dot{position:relative;width:6px;height:6px;border-radius:50%;background:var(--neon)}
+.hero__eyebrow .dot::after{
+  content:'';position:absolute;inset:-2px;border-radius:50%;
+  border:1.5px solid var(--neon);
+  animation:pulse 2.2s ease-out infinite;
+}
 @keyframes pulse{
-  0%{box-shadow:0 0 0 0 rgba(210,255,0,.55)}
-  70%{box-shadow:0 0 0 12px rgba(210,255,0,0)}
-  100%{box-shadow:0 0 0 0 rgba(210,255,0,0)}
+  0%{transform:scale(.5);opacity:.7}
+  70%{transform:scale(2.4);opacity:0}
+  100%{transform:scale(2.4);opacity:0}
 }
 
 /* --- 超大字名 ---
@@ -912,11 +932,9 @@ html.js .hero__glow{opacity:calc(1 - .85 * var(--hero-p,0))}
   .about__left{position:sticky;top:16vh}
 }
 
-/* --- 跑马灯：滚动越快跑得越"用力" ---
-   基础位移仍然交给 CSS 动画（合成器跑，几乎不耗 CPU），
-   这里只在外面套一层，叠上跟滚动速度挂钩的偏移和轻微斜切，
-   松手后由 main.js 衰减回 0。 */
-.marquee__inner{transform:translate3d(0,0,0);will-change:transform}
+/* --- 跑马灯：滚动响应那层已经去掉了（见 main.js 顶部那段说明）。
+   .marquee__inner 这个包装层连同 will-change 一并删除 ——
+   元素早就从 HTML 里拿掉了，留着规则只会误导后来的人。 */
 
 /* --- 联系：光晕随滚动涨起来 --- */
 html.js .contact__glow{
@@ -964,6 +982,33 @@ html.js .contact__glow{
   .hero__cn{-webkit-text-stroke-width:3px}
   .hero__foot{flex-direction:column;align-items:center;text-align:center;gap:1rem;bottom:1.75rem}
   .hero__meta{flex-direction:column;gap:.8rem}
+  /* ---------- 移动端的性能取舍 ----------
+     手机 GPU 是 TBDR 架构：全屏混合、背景模糊、大面积 filter 都要读回
+     整块帧缓冲，代价远高于桌面。下面这几条在手机上关掉/减弱，
+     视觉几乎看不出差别，但能明显减轻掉帧。
+
+     说明：这些在本地无头环境里量不出差异（tools/perf-scroll.mjs 显示
+     它们只占主线程开销的百分之几），因为瓶颈在显存带宽而不是主线程 ——
+     所以这里的取舍依据是"这类效果在 TBDR 上已知很贵"，不是本地实测。 */
+
+  /* 1. 颗粒层不用混合模式。5% 不透明度下 overlay 与普通叠加肉眼几乎无差，
+        但混合模式会让合成器每帧回读背景。 */
+  .grain{mix-blend-mode:normal;opacity:.045}
+
+  /* 2. 导航吸顶时的毛玻璃换成更实的底色。backdrop-filter 在滚动时
+        要持续重算背景模糊，是手机上最典型的卡顿来源之一。 */
+  .nav.is-stuck{background:rgba(17,17,18,.94);backdrop-filter:none}
+
+  /* 3. 三处光晕本来就画的是 radial-gradient（自带柔和过渡），
+        再叠一层大半径 blur 属于重复劳动，手机上去掉。 */
+  .hero__glow{filter:none}
+  .hero__halo{filter:none}
+  .contact__glow{filter:none}
+
+  /* 4. 首屏整块（.hero__stage）每帧都在改 opacity + scale，
+        它是一个很大的合成组；手机 HUD 上别再给它额外加滤镜层。 */
+  .hero__glow,.hero__halo{will-change:auto}
+}
   .skills__list li{grid-template-columns:1fr;gap:.25rem}
   .about__facts li{flex-direction:column;gap:.2rem}
   .about__facts b{width:auto}

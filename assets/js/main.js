@@ -180,6 +180,20 @@
 
   const damp = (cur, target, dt, tau) => cur + (target - cur) * (1 - Math.exp(-dt / tau));
 
+  /* 调试出口：控制台里 __scrub() 可以看到引擎缓存的坐标、区间和当前值。
+     排查"滚动动效触发时机不对"这类问题时，光看 --p 分不清是
+     "缓存的坐标过期了"还是"动画没跑完" —— 这三样摆在一起就一目了然。
+     只读，不改状态；体积也就几十字节。 */
+  window.__scrub = () => scrubEls.map(it => ({
+    el: (it.el.className || it.el.tagName).toString().slice(0, 28),
+    cachedDocTop: it.top,
+    actualDocTop: layoutTop(it.el),
+    fromPx: it.fromPx,
+    toPx: it.toPx,
+    target: it.target,
+    cur: it.cur,
+  }));
+
   /* ---------------------------------------------------------
      3c. 每帧只做一次「先全部算完，再统一写」
      读-写-读-写来回穿插会触发多次强制重排，是滚动掉帧最常见的来源。
@@ -189,17 +203,36 @@
 
   function paint() {
     for (const it of scrubEls) {
-      it.el.style.setProperty('--p', it.cur.toFixed(4));
+      const v = it.cur.toFixed(4);
+      // 【只在数值真的变了才写】
+      //
+      // --p 是可继承的自定义属性：每写一次，浏览器就要重算这个元素
+      // 及其**整棵子树**的样式。而滚动时绝大多数元素此刻在视口外，
+      // 进度恒定是 0 或 1 —— 每帧重写它们纯属白烧。
+      // 实测（tools/perf-scroll.mjs，CPU 降速 6x 滚 240 帧）：
+      // 整个滚动动效占了主线程开销的 61%（104ms → 关掉后 40ms），
+      // 其中样式重算 37ms → 5ms。省掉无变化的写入是最大的一笔。
+      if (v !== it.painted) {
+        it.painted = v;
+        it.el.style.setProperty('--p', v);
+      }
       if (it.blur) {
         // 动画走完就把模糊摘掉：留着的话每帧都要过一遍滤镜，白烧 GPU
         const done = it.cur > 0.995;
         if (done !== it.done) { it.done = done; it.el.classList.toggle('is-done', done); }
       }
     }
-    if (heroEl) heroEl.style.setProperty('--hero-p', heroCur.toFixed(4));
+    if (heroEl) {
+      const hv = heroCur.toFixed(4);
+      if (hv !== heroPainted) {
+        heroPainted = hv;
+        heroEl.style.setProperty('--hero-p', hv);
+      }
+    }
   }
 
   let heroCur = 0;
+  let heroPainted = null;
 
   function frame(now) {
     const dt = Math.min(64, now - lastT) || 16;
@@ -261,6 +294,11 @@
     // 完全由滚动位置驱动，这里只负责状态类名和一层视差。
     const leavingWelcome = y > vh * 0.98;
     document.body.classList.toggle('at-welcome', !leavingWelcome);
+    // 开场页被完全盖住之后，直接从渲染树里摘掉。
+    // 它是一个 position:fixed 的全屏层（还带视差），合成器会一直保留着它；
+    // 而此刻 main 早已把它盖满，留着只是白占显存和每帧的合成开销。
+    // 用 visibility 而不是 display：不影响布局，也能让合成器丢掉这一层。
+    document.body.classList.toggle('past-welcome', y > vh * 1.02);
     // is-hero 一旦加上就不再移除：首屏动画只播一次，
     // 滚回去重看时不该重播
     if (y > vh * 0.55) document.body.classList.add('is-hero');
@@ -383,8 +421,24 @@
 
     measure();
 
-    // 字体换进来之后行高会变，位置得重量一次；
-    // 首屏图加载完页面高度也会变。这两个时机都不能漏。
+    // 位置缓存会在布局变化后过期，而过期的缓存会让【所有】动效的触发时机整体偏移。
+    // 实测踩到过：联系区标题的缓存坐标比真实值大 189px，
+    // 表现就是"邮箱按钮都露出来了，标题还差 2% 没显示完"，而且时有时无 ——
+    // 因为字体换入 / 懒加载图片落地 / 内容增删的时机每次都不一样。
+    //
+    // 与其去猜是哪一个引起的，不如直接盯着"页面高度"这个总账：
+    // 高度一变就重新量。ResizeObserver 正好干这个。
+    // （measure() 只读布局、只写 --p 这类不影响布局的属性，不会自激。）
+    if (window.ResizeObserver) {
+      let rot = 0;
+      new ResizeObserver(() => {
+        clearTimeout(rot);
+        rot = setTimeout(measure, 120);
+      }).observe(document.documentElement);
+    }
+
+    // 这几个时机也各补一次：字体换入之后行高会变，
+    // 首屏图加载完页面高度也会变。
     if (document.fonts?.ready) document.fonts.ready.then(measure);
     window.addEventListener('load', measure);
 
