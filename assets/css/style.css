@@ -205,6 +205,8 @@ em{font-style:normal}
   padding:clamp(1.5rem,3.5vw,2.6rem) var(--pad);
   overflow:hidden;
   cursor:pointer;
+  /* 四周这几处小字的统一字号，调这一个值全都跟着变 */
+  --meta:clamp(.78rem,1.05vw,.92rem);
   /* 视差变量，由 main.js 按滚动位置写入 */
   --wy:0px;--wo:1;
 }
@@ -218,7 +220,7 @@ em{font-style:normal}
 .welcome__top{
   position:relative;z-index:1;
   display:flex;justify-content:space-between;align-items:center;gap:1rem;
-  font-size:.66rem;letter-spacing:.26em;text-transform:uppercase;font-weight:700;
+  font-size:var(--meta);letter-spacing:.2em;text-transform:uppercase;font-weight:700;
   opacity:0;transition:opacity .9s var(--ease) .55s;
 }
 body.is-ready .welcome__top{opacity:1}
@@ -230,12 +232,12 @@ body.is-ready .welcome__top{opacity:1}
 }
 .welcome__label{
   display:flex;align-items:center;gap:.6rem;
-  font-size:.68rem;letter-spacing:.3em;text-transform:uppercase;font-weight:700;
+  font-size:var(--meta);letter-spacing:.26em;text-transform:uppercase;font-weight:700;
   margin-bottom:clamp(1rem,3vw,2rem);
   opacity:0;transform:translateY(14px);
   transition:opacity .8s var(--ease) .6s,transform .8s var(--ease) .6s;
 }
-.welcome__label .dot{width:7px;height:7px;border-radius:50%;background:var(--ink)}
+.welcome__label .dot{width:8px;height:8px;border-radius:50%;background:var(--ink)}
 body.is-ready .welcome__label{opacity:1;transform:none}
 
 .welcome__title{
@@ -267,15 +269,15 @@ body.is-ready .welcome__line:nth-child(2) > span{transition-delay:.13s}
 }
 body.is-ready .welcome__foot{opacity:1}
 .welcome__roles{
-  font-size:.68rem;letter-spacing:.22em;text-transform:uppercase;font-weight:700;opacity:.72;
+  font-size:var(--meta);letter-spacing:.18em;text-transform:uppercase;font-weight:700;opacity:.72;
 }
 .welcome__scroll{
   display:inline-flex;align-items:center;gap:.6rem;
-  font-size:.68rem;letter-spacing:.22em;text-transform:uppercase;font-weight:700;
+  font-size:var(--meta);letter-spacing:.18em;text-transform:uppercase;font-weight:700;
   transition:opacity .3s;
 }
 .welcome__scroll:hover{opacity:.6}
-.welcome__scroll svg{width:11px;height:24px;animation:sway 2s infinite}
+.welcome__scroll svg{width:13px;height:28px;animation:sway 2s infinite}
 
 /* 欢迎页期间先把导航和进度条收起来，保持开场干净 */
 body.at-welcome .nav{transform:translateY(-105%);opacity:0;pointer-events:none}
