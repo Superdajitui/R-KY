@@ -479,6 +479,31 @@ check(mob.passionSrc.every(s => !s.includes('-700.')),
   mob.passionSrc.join(' '));
 check(mob.mobOrder.every(o => o === '文上'),
   '手机上三行都是文字在上、图片在下', mob.mobOrder.join(' / '));
+
+// svh 覆盖段必须真的能被解析到。
+// 事故复盘：媒体查询提前闭合 + 一个多余的 }，让它之后的所有块失效，
+// 于是 --hero-portrait-h 落回 54vh（比 54svh 高），手机上人物变高、挡住 KERRY。
+// 这里直接从 CSSOM 里把那条规则捞出来看，而不是靠肉眼看 CSS 文本。
+const svh = await mp.evaluate(() => {
+  for (const sheet of document.styleSheets) {
+    let rules;
+    try { rules = sheet.cssRules; } catch { continue; }
+    for (const r of rules) {
+      if (r.constructor.name === 'CSSSupportsRule' && /100svh/.test(r.conditionText || '')) {
+        for (const inner of r.cssRules || []) {
+          for (const leaf of inner.cssRules || []) {
+            const v = leaf.style?.getPropertyValue('--hero-portrait-h');
+            if (v) return { found: true, value: v.trim(), supports: CSS.supports('height', '100svh') };
+          }
+        }
+      }
+    }
+  }
+  return { found: false };
+});
+check(svh.found && /svh$/.test(svh.value),
+  'svh 覆盖段可被解析（手机上人物高度用 svh，不是 vh）',
+  svh.found ? `--hero-portrait-h: ${svh.value}（浏览器支持 svh: ${svh.supports}）` : '✗ 没找到 @supports (height:100svh) 里的覆盖规则');
 check(mob.bars === 0 && mob.lines === 0, '手机上进度条与标题都到位',
   `条 ${mob.bars} / 行 ${mob.lines}`);
 await mp.close();
@@ -811,6 +836,45 @@ console.log('\n════ 并排元素同步上滑（不出现左右高度差�
   check(caught > 0.01, '人为制造 0.07 的进度差后检查能抓到（证明这条断言有效）',
     `制造出的进度差 ${caught.toFixed(3)}`);
   await sp.close();
+}
+
+/* ══════════════════ 6d. 手机端规则不许漏到桌面 ══════════════════ */
+/*
+   这条来自一次真实事故：在媒体查询里多写了一个 }，
+   @media (max-width:820px) 提前闭合，后面四条手机规则漏到桌面 ——
+   技能列表、档案列表、页脚排版在电脑上全变了；
+   而那个多余的 } 还让它之后的所有块失效，包括 @supports (height:100svh)
+   里覆盖 --hero-portrait-h 的那段（手机人物因此变高，把背后的 KERRY 挡住）。
+
+   CSS 写错不报错。所以这里直接断言"桌面上拿到的必须是桌面那一档的值"。
+*/
+console.log('\n════ 桌面不吃手机端规则 ════');
+{
+  const dp = await browser.newPage();
+  await dp.setViewport({ width: 1440, height: 900 });
+  await dp.goto(URL_BASE, { waitUntil: 'networkidle0', timeout: 60000 });
+  await sleep(1600);
+  const d = await dp.evaluate(() => {
+    const g = (sel, prop) => {
+      const el = document.querySelector(sel);
+      return el ? getComputedStyle(el).getPropertyValue(prop).trim() : '(无)';
+    };
+    return {
+      footDir: g('.hero__foot', 'flex-direction'),
+      skillCols: g('.skills__list li', 'grid-template-columns').split(' ').length,
+      factDir: g('.about__facts li', 'flex-direction'),
+      footJustify: g('.foot__wrap', 'justify-content'),
+      grainBlend: g('.grain', 'mix-blend-mode'),
+      haloFilter: g('.hero__halo', 'filter'),
+    };
+  });
+  check(d.footDir === 'row', '首屏底部仍是横向排布', d.footDir);
+  check(d.skillCols >= 2, '技能列表在桌面上仍是两列', `${d.skillCols} 列`);
+  check(d.factDir === 'row', '档案列表在桌面上仍是横向', d.factDir);
+  check(d.footJustify === 'space-between', '页脚在桌面上仍是两端对齐', d.footJustify);
+  check(d.grainBlend === 'overlay', '颗粒层在桌面上仍用混合模式', d.grainBlend);
+  check(/blur/.test(d.haloFilter), '光晕在桌面上仍保留模糊', d.haloFilter);
+  await dp.close();
 }
 
 /* ══════════════════ 7. 标题行不许折行 ══════════════════ */

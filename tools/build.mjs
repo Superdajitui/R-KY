@@ -117,6 +117,38 @@ if (!CSS_V || !JS_V) {
 }
 console.log(`  指纹: style.css?v=${CSS_V}  main.js?v=${JS_V}`);
 
+/* ---------- CSS 括号配平检查 ----------
+   这一条是被真实事故逼出来的：我在媒体查询里加了一段规则，
+   多写了一个 }，于是 @media (max-width:820px) 提前闭合 ——
+   后面四条手机端规则漏到了桌面（技能列表、档案列表、页脚排版全变），
+   而那个多余的 } 又让**它之后的所有块失效**，
+   包括 @supports (height:100svh) 里覆盖 --hero-portrait-h 的那段。
+
+   表现是什么？手机上人物变高、把背后的 KERRY 挡住了 ——
+   用户看到的是"文字怎么变小了"，跟括号八竿子打不着。
+   CSS 没有编译期，写错了不报错，只是静静地失效。
+   所以放在打包这一步兜底：不平衡就不许发布。 */
+const cssText = await readFile(path.join(DIST, 'assets/css/style.css'), 'utf8');
+// 剥注释时把注释换成等量的换行，这样字符下标和行号仍然对得上原文件 ——
+// 否则报出来的行号是"剥完注释之后"的行号，指不到真正出问题的地方，
+// 那种误导性的报错比不报还费时间。
+const cssNoComment = cssText.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '));
+let depth = 0;
+let badAt = -1;
+for (let i = 0; i < cssNoComment.length; i++) {
+  if (cssNoComment[i] === '{') depth++;
+  else if (cssNoComment[i] === '}') { depth--; if (depth < 0 && badAt < 0) badAt = i; }
+}
+if (depth !== 0 || badAt >= 0) {
+  const at = badAt >= 0 ? badAt : cssNoComment.length;
+  const lineNo = cssNoComment.slice(0, at).split('\n').length;
+  console.error(`\n✗ CSS 括号不配平（结束时深度 ${depth}${badAt >= 0 ? `，第 ${lineNo} 行处深度变负` : ''}）`);
+  if (badAt >= 0) console.error(`  ${cssText.split('\n')[lineNo - 1]?.trim().slice(0, 70)}`);
+  console.error('  多写或少写一个 } 会让后面所有规则静默失效，必须修掉再发布。\n');
+  process.exit(1);
+}
+console.log(`  CSS 括号配平 ✓`);
+
 for (const file of ['index.html', '404.html']) {
   const p = path.join(DIST, file);
   if (!existsSync(p)) continue;

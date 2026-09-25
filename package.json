@@ -22,6 +22,7 @@
     "preview": "node tools/preview.mjs",
     "test:welcome": "node tools/test-welcome.mjs",
     "test:scroll": "node tools/test-scroll.mjs",
+    "test:cssguard": "node tools/check-css-guard.mjs",
     "shoot:scroll": "node tools/shoot-scroll.mjs",
     "shoot:marquee": "node tools/shoot-marquee.mjs",
     "shoot:copy": "node tools/shoot-copy.mjs",

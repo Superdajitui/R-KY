@@ -1008,7 +1008,7 @@ html.js .contact__glow{
   /* 4. 首屏整块（.hero__stage）每帧都在改 opacity + scale，
         它是一个很大的合成组；手机 HUD 上别再给它额外加滤镜层。 */
   .hero__glow,.hero__halo{will-change:auto}
-}
+
   .skills__list li{grid-template-columns:1fr;gap:.25rem}
   .about__facts li{flex-direction:column;gap:.2rem}
   .about__facts b{width:auto}
