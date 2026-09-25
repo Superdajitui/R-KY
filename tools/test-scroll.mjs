@@ -637,6 +637,89 @@ console.log('\n════ 行动号召（联系区）可见时已完全显示 
   await cta.close();
 }
 
+/* ══════════════════ 6c. 并排元素必须同步上滑 ══════════════════ */
+/*
+   用户反馈作品区"四个板块左右上滑速度不一致，有高度差"。
+   根因是给同一排的卡片加了不同的 data-scrub-delay（0 / 0.05 / 0.1 / 0.15）——
+   它们 docTop 完全相同，进度却永久差 0.071，屏幕上就是恒定的 3.2px 高度差，
+   看着像排版坏了，而不像设计过的错落。
+
+   错落应该按【排】错开（下一排本来就在更下面，几何上天然更晚），
+   不能按【左右】错开。这条检查盯的就是这个：
+   同一高度、左右并排的 scrub 元素，进度必须一致。
+*/
+console.log('\n════ 并排元素同步上滑（不出现左右高度差）════');
+{
+  const sp = await browser.newPage();
+  await sp.setViewport({ width: 1440, height: 900 });
+  await sp.goto(URL_BASE, { waitUntil: 'networkidle0', timeout: 60000 });
+  await sleep(2600);
+
+  // 同一高度（docTop 相差 <4px）且左右位置不同的，算作"并排"
+  const sampleRows = () => sp.evaluate(() => {
+    const items = [...document.querySelectorAll('[data-scrub]')].map(el => {
+      let top = 0;
+      for (let n = el; n; n = n.offsetParent) top += n.offsetTop;
+      const r = el.getBoundingClientRect();
+      return {
+        top: Math.round(top),
+        left: Math.round(r.left),
+        p: parseFloat(el.style.getPropertyValue('--p') || '0'),
+      };
+    });
+    const groups = new Map();
+    for (const it of items) {
+      const k = Math.round(it.top / 4) * 4;
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(it);
+    }
+    const out = [];
+    for (const [k, g] of groups) {
+      if (g.length < 2) continue;
+      const lefts = new Set(g.map(x => x.left));
+      if (lefts.size < 2) continue;              // 不是并排（是上下堆叠）
+      const ps = g.map(x => x.p);
+      out.push({ top: k, spread: Math.max(...ps) - Math.min(...ps), n: g.length });
+    }
+    return out;
+  });
+
+  const cardsTop = await sp.evaluate(() => {
+    const el = document.querySelector('.cards');
+    let y = 0; for (let n = el; n; n = n.offsetParent) y += n.offsetTop; return y;
+  });
+
+  let worst = 0, worstAt = '';
+  for (const frac of [0.3, 0.45, 0.6, 0.75]) {
+    await sp.evaluate(v => window.scrollTo(0, Math.round(v)), cardsTop - 900 * frac);
+    await sleep(1200);
+    for (const row of await sampleRows()) {
+      if (row.spread > worst) { worst = row.spread; worstAt = `top=${row.top} (${row.n} 个并排)`; }
+    }
+  }
+  check(worst < 0.01, '同一排的并排元素进度完全一致（没有左右高度差）',
+    worst < 0.01 ? '4 个滚动位置全部一致' : `最大进度差 ${worst.toFixed(3)} @ ${worstAt}`);
+
+  // 自检：人为把其中一张卡片的进度改掉，确认断言抓得住
+  const caught = await sp.evaluate(() => {
+    const cards = [...document.querySelectorAll('.card')];
+    const before = cards.map(c => parseFloat(c.style.getPropertyValue('--p') || '0'));
+    cards[1].style.setProperty('--p', String(Math.max(0, before[0] - 0.07)));
+    const items = cards.map(el => {
+      let top = 0;
+      for (let n = el; n; n = n.offsetParent) top += n.offsetTop;
+      return { top: Math.round(top / 4) * 4, p: parseFloat(el.style.getPropertyValue('--p') || '0') };
+    });
+    const row = items.filter(i => i.top === items[0].top).map(i => i.p);
+    const spread = Math.max(...row) - Math.min(...row);
+    cards.forEach((c, i) => c.style.setProperty('--p', String(before[i])));
+    return spread;
+  });
+  check(caught > 0.01, '人为制造 0.07 的进度差后检查能抓到（证明这条断言有效）',
+    `制造出的进度差 ${caught.toFixed(3)}`);
+  await sp.close();
+}
+
 /* ══════════════════ 7. 标题行不许折行 ══════════════════ */
 /*
    一行 = 一个行容器。如果某个宽度下这行字太长而折成两行，

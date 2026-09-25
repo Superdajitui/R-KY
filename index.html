@@ -279,6 +279,7 @@
       <h2 class="sec__title" data-scrub="lines">赛道、取景框，<em>和一副耳机</em>。</h2>
 
       <div class="passions__grid">
+        <!-- 同 .cards：三栏在同一排，一律不加延迟，否则左右会有高度差 -->
         <article class="passion" data-scrub="rise">
           <span class="passion__idx">01</span>
           <h3 class="passion__title">摄影</h3>
@@ -290,7 +291,7 @@
           </p>
         </article>
 
-        <article class="passion" data-scrub="rise" data-scrub-delay="0.06">
+        <article class="passion" data-scrub="rise">
           <span class="passion__idx">02</span>
           <h3 class="passion__title">赛车</h3>
           <p class="passion__en">Motorsport</p>
@@ -300,7 +301,7 @@
           </p>
         </article>
 
-        <article class="passion" data-scrub="rise" data-scrub-delay="0.12">
+        <article class="passion" data-scrub="rise">
           <span class="passion__idx">03</span>
           <h3 class="passion__title">音乐</h3>
           <p class="passion__en">Music · 孙燕姿</p>
@@ -321,6 +322,10 @@
       <h2 class="sec__title" data-scrub="lines">作品，与<em>练习</em>。</h2>
 
       <div class="cards">
+        <!-- 不加 data-scrub-delay：同一排的两张卡片 docTop 完全相同，
+             给它们不同的延迟会让进度永久差 0.071（屏幕上差 3.2px），
+             看着就是"左边比右边高一点"，像排版坏了。
+             错落感交给几何本身 —— 第二排本来就在下面 300px，天然更晚进场。 -->
         <a class="card" href="#" data-cursor="lg" data-scrub="rise">
           <span class="card__idx">01</span>
           <h3 class="card__title">省创仿真平台</h3>
@@ -329,7 +334,7 @@
           <span class="card__arrow">↗</span>
         </a>
 
-        <a class="card" href="#" data-cursor="lg" data-scrub="rise" data-scrub-delay="0.05">
+        <a class="card" href="#" data-cursor="lg" data-scrub="rise">
           <span class="card__idx">02</span>
           <h3 class="card__title">个人网站 v1</h3>
           <p class="card__desc">你正在看的这一页。零框架、零依赖，每一处动效都手写而成。</p>
@@ -337,7 +342,7 @@
           <span class="card__arrow">↗</span>
         </a>
 
-        <a class="card" href="#" data-cursor="lg" data-scrub="rise" data-scrub-delay="0.1">
+        <a class="card" href="#" data-cursor="lg" data-scrub="rise">
           <span class="card__idx">03</span>
           <h3 class="card__title">课程设计合集</h3>
           <p class="card__desc">从链表到图，把数据结构一个个亲手实现。基本功没有捷径。</p>
@@ -345,7 +350,7 @@
           <span class="card__arrow">↗</span>
         </a>
 
-        <a class="card" href="#" data-cursor="lg" data-scrub="rise" data-scrub-delay="0.15">
+        <a class="card" href="#" data-cursor="lg" data-scrub="rise">
           <span class="card__idx">04</span>
           <h3 class="card__title">PS / ACR 调色修图</h3>
           <p class="card__desc">从 RAW 到成片。白平衡、曲线、局部蒙版 —— 调色是重新分配光。</p>
@@ -393,6 +398,9 @@
         </a>
       </div>
 
+      <!-- 这一处保留延迟：它和上面那排按钮是【上下堆叠】的，
+           错开一点是自然的层叠节奏，不会造成"左右不一样高"。
+           延迟只该用在这种纵向关系上，不能用在并排元素之间。 -->
       <p class="contact__note" data-scrub="rise" data-scrub-delay="0.06">
         目前开放实习、合作与任何有趣的技术讨论。回信通常不超过 24 小时。
       </p>
