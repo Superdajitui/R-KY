@@ -183,6 +183,53 @@ const neonPct = neon / total * 100;
 console.log(`  名字区域霓虹占比: ${neonPct.toFixed(2)}%`);
 check(neonPct > 4, '描边确实渲染出来了', `${neonPct.toFixed(2)}%`);
 check(neonPct < 20, '内部没有多余的交叉线', `${neonPct.toFixed(2)}%`);
+
+/* ---- 档案格子不能换行 ----
+   「江苏无锡」是 4 个汉字，比同格的 4 位数字（2006）宽一倍。
+   曾经被后面 media query 里的 .stat__num 字号覆盖，手机上撑破格子换行。
+
+   判定用「文字总宽 vs 可用宽」：
+     · 不能数 getClientRects() 的段数 —— 那里面 <span>2006</span><small>.01</small>
+       是两个 flex 子元素，会被误判成两行（踩过）。
+     · 也不能量元素宽度 —— 块级元素撑满格子，永远"刚好"。 */
+console.log('');
+// 先滚到档案区并把数字滚动动画等完。
+// 不等的话量到的是 "0.01" 这种滚动前的窄文本，比 "2006.01" 窄得多，
+// 真溢出了也看不出来。
+await page.evaluate(() => document.querySelector('#stats').scrollIntoView({ block: 'start', behavior: 'instant' }));
+await sleep(2200);
+const statsFit = await page.evaluate(() => {
+  return [...document.querySelectorAll('.stat')].map(cell => {
+    const num = cell.querySelector('.stat__num');
+    if (!num) return null;
+    const cs = getComputedStyle(num);
+    const kids = [...num.children];
+    let textW;
+    if (kids.length) {
+      const gap = parseFloat(cs.columnGap) || 0;
+      textW = kids.reduce((s, k) => s + k.getBoundingClientRect().width, 0)
+            + gap * (kids.length - 1);
+    } else {
+      const r = document.createRange();
+      r.selectNodeContents(num);
+      textW = r.getBoundingClientRect().width;
+    }
+    return {
+      text: num.textContent.trim(),
+      fontSize: cs.fontSize,
+      textW: Math.round(textW),
+      contentWidth: num.clientWidth,
+    };
+  }).filter(Boolean);
+});
+
+for (const s of statsFit) {
+  const over = s.textW > s.contentWidth + 1;
+  console.log(`  ${s.text.padEnd(8)} 字号 ${s.fontSize.padStart(7)}  文字 ${String(s.textW).padStart(4)}px / 可用 ${String(s.contentWidth).padStart(4)}px  ${over ? '✗ 换行' : '✓'}`);
+}
+const overflowing = statsFit.filter(s => s.textW > s.contentWidth + 1);
+check(overflowing.length === 0, '档案四项都不换行',
+  overflowing.map(s => `${s.text}(${s.textW}>${s.contentWidth})`).join(', ') || '全部单行');
 await page.close();
 
 /* ═══════════ 移动端 ═══════════ */

@@ -542,6 +542,9 @@ section{position:relative;scroll-margin-top:84px}
 /* ISTJ 这类字母，和 ♑ 这类符号：Anton 里没有对应字形，会回退到系统字体，
    字号得单独压一点，否则视觉重量和数字对不上 */
 .stat__num--word{font-size:clamp(2.1rem,5.4vw,3.9rem);letter-spacing:.02em}
+/* 汉字比拉丁字母宽一倍，4 个汉字（江苏无锡）会撑破格子，单独收一档。
+   上限是按最窄桌面（821px）反推的：格子内容宽约 147px，4 字需 ≤36.8px。 */
+.stat__num--cn{font-size:clamp(1.6rem,3.8vw,3.8rem);letter-spacing:.01em}
 .stat__num--sym{
   font-family:'Segoe UI Symbol','Apple Symbols','Noto Sans Symbols',var(--f-body);
   font-weight:400;
@@ -742,6 +745,9 @@ body.is-hero .hero__foot{opacity:0;animation:fadeUp .9s var(--ease) .7s forwards
 @media (max-width:520px){
   .stats__row{grid-template-columns:1fr 1fr}
   .stat__num{font-size:2.4rem}
+  /* 这条不能省：上面的 .stat__num 写在后面，会盖掉 --cn 那一档，
+     于是「江苏无锡」用数字的字号，4 个字撑破格子换行。 */
+  .stat__num--cn{font-size:clamp(1.5rem,8vw,2.4rem)}
 }
 
 /* ---------- 无障碍：尊重系统"减少动态效果" ---------- */
