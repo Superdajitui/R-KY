@@ -281,8 +281,18 @@ body.is-ready .welcome__label{opacity:1;transform:none}
 
 .welcome__title{
   font-family:var(--f-cn);font-weight:900;
-  font-size:clamp(2.5rem,12vw,9.5rem);
-  line-height:1.04;letter-spacing:-.02em;
+  /* 字号系数从 12vw 提到 14.2vw：手机上是 46.8px → 55.4px（+18%），冲击力差别很明显。
+     上限 9.5rem 没动，所以宽屏仍然是原来的 152px，桌面版式完全不受影响。
+     这个系数是按【最宽的一行】反推的上限：
+     「我的个人网站」6 个字，字距 -.02em，实际宽度 ≈ 5.88 × 字号；
+     390px 手机上可用宽度 = 390 − 2×20(padding) = 350px → 字号上限 59.5px。
+     取 55.4px 留了余量；360px 窄机上算下来 51.1px 也仍然放得下。
+     test-welcome / test-scroll 里有断言盯着"这一行不许折行"。 */
+  font-size:clamp(2.5rem,14.2vw,9.5rem);
+  /* 行距收紧到 0.99：两行贴得更紧，整块更像一个"面"而不是两行字，
+     视觉重量集中，冲击感就出来了。
+     汉字字身大约占 0.88em，0.99 仍留了约 0.11em 的空隙，不会粘在一起。 */
+  line-height:.99;letter-spacing:-.02em;
 }
 /* 逐行上推揭示：整行一边上浮一边淡入。
    ------------------------------------------------------------
@@ -296,8 +306,11 @@ body.is-ready .welcome__label{opacity:1;transform:none}
 .welcome__line{display:block}
 .welcome__line > span{
   display:block;
-  opacity:0;transform:translateY(.42em);
-  transition:opacity 1s var(--ease),transform 1.15s var(--ease);
+  /* 除了上浮，再叠一点轻微放大：落定时像"压下去再稳稳撑开"，
+     比单纯位移更有分量。位移和缩放都是 em/倍率，跟着字号走。 */
+  opacity:0;transform:translateY(.42em) scale(.965);
+  transform-origin:left bottom;
+  transition:opacity 1s var(--ease),transform 1.15s cubic-bezier(.16,1,.3,1);
 }
 body.is-ready .welcome__line > span{opacity:1;transform:none}
 body.is-ready .welcome__line:nth-child(2) > span{transition-delay:.13s}
@@ -321,9 +334,12 @@ body.is-ready .welcome__line:nth-child(2) > span{transition-delay:.13s}
      同一个设计在两种尺寸下观感对不上。用 em 让它等比缩放，
      再夹一个下限，免得小屏上细到断线。
      数值是目标可见粗细的两倍：内半部分会被下面的填充盖住。
+     下限从 3px 提到 3.6px（可见 1.5 → 1.8px）：字号放大 18% 之后，
+     下面那行实心黑更重了，描边还是原来粗细就显得偏飘。
+     桌面上 0.028em = 4.26px，落在 [3.6, 4.4] 区间内，所以桌面完全不受影响。
      注意颜色不能省 —— -webkit-text-stroke 是简写属性，只给宽度的话
      颜色取 currentColor，而这里的 color 是 transparent，描边会整个消失。 */
-  -webkit-text-stroke:clamp(3px, 0.028em, 4.4px) var(--ink);
+  -webkit-text-stroke:clamp(3.6px, 0.028em, 4.4px) var(--ink);
 }
 .welcome__line--outline > span::after{
   content:attr(data-text);

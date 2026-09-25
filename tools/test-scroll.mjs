@@ -928,6 +928,7 @@ const STRICT = [1440, 1280, 1100, 1001, 900, 768, 520, 430];
 const SOFT = [390, 360];
 const wrapBad = [];
 const wrapSoft = [];
+const welcomeFill = [];
 
 for (const [tier, widths] of [['strict', STRICT], ['soft', SOFT]]) {
   for (const w of widths) {
@@ -944,6 +945,36 @@ for (const [tier, widths] of [['strict', STRICT], ['soft', SOFT]]) {
         };
       }));
     const bad = rows.filter(r => r.lines > 1.35);
+
+    // 开场页那两行大字也要盯着。
+    // 字号系数从 12vw 提到 14.2vw 之后，最宽那行占到可用宽的 93% ——
+    // 视觉冲击是够了，但离折行只剩 7% 余量，必须有人看着。
+    // 这里用 Range 量真正的文字：块级 span 的盒子宽度永远等于父宽，量了没用。
+    const welcome = await p.evaluate(() =>
+      [...document.querySelectorAll('.welcome__line')].map(el => {
+        const span = el.querySelector('span');
+        const range = document.createRange();
+        range.selectNodeContents(span);
+        const rects = [...range.getClientRects()].filter(r => r.width > 1);
+        const avail = document.querySelector('.welcome__title').getBoundingClientRect().width;
+        const widest = rects.length ? Math.max(...rects.map(r => r.width)) : 0;
+        return {
+          text: (span.textContent || '').trim(),
+          lines: rects.length,
+          fill: +(widest / avail).toFixed(3),
+        };
+      }));
+
+    const badW = welcome.filter(r => r.lines > 1);
+    if (badW.length) {
+      const msg = `${w}px: ${badW.map(b => `「${b.text}」${b.lines}行`).join(' ')}`;
+      (tier === 'strict' ? wrapBad : wrapSoft).push(msg);
+    }
+    // 顺便报告占比：超过 100% 一定会折，接近 100% 就是危险区
+    const tightest = welcome.reduce((m, r) => Math.max(m, r.fill), 0);
+    if (tier === 'strict') {
+      welcomeFill.push(`${w}px ${(tightest * 100).toFixed(0)}%`);
+    }
     if (bad.length) {
       const msg = `${w}px: ${bad.map(b => `「${b.text}」${b.lines}行`).join(' ')}`;
       (tier === 'strict' ? wrapBad : wrapSoft).push(msg);
@@ -954,6 +985,7 @@ for (const [tier, widths] of [['strict', STRICT], ['soft', SOFT]]) {
 
 check(wrapBad.length === 0, '桌面/平板宽度下大标题都不折行',
   wrapBad.length ? wrapBad.join(' | ') : `${STRICT.length} 个宽度全部单行`);
+console.log(`  · 开场页最宽那行占可用宽: ${welcomeFill.join(' / ')}（越接近 100% 越危险）`);
 if (wrapSoft.length) {
   console.log(`  · 窄手机（正常折行，不算失败）: ${wrapSoft.join(' | ')}`);
 }
