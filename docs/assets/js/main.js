@@ -167,19 +167,18 @@
   }
 
   /* ---------------------------------------------------------
-     3b. 跑马灯：滚动越快跑得越"用力"
-     基础位移仍然交给 CSS 动画（合成器跑，几乎不耗 CPU），
-     这里只叠一层跟滚动速度挂钩的偏移 + 轻微斜切，
-     松手后自己衰减回 0。这样既有反应，又不用为了它常驻一个 rAF 循环。
+     3b. 跑马灯
+     纯 CSS 匀速循环（合成器跑，几乎不耗 CPU），这里【不插手】。
+     ---------------------------------------------------------
+     曾经叠过一层"跟滚动速度挂钩"的偏移 + 斜切：滚动时把整条带子推走
+     最多 90px、松手再弹回来。问题在于基础速度只有约 29px/s，
+     而那个偏移能在 100ms 内变化 90px —— 相当于瞬间快了三十倍再弹回去，
+     在电脑上看着就是"一滚一跳"。
+     跑马灯要的是**连续**，所以这层响应整个去掉了；
+     现在唯一影响它的只有页面本身的滚动。
      --------------------------------------------------------- */
-  const mqInner  = $('.marquee__inner');
-  let mqShift = 0;      // 当前偏移（px）
-  let mqSkew  = 0;      // 当前斜切（deg）
-  let mqTargetShift = 0;
-  let mqTargetSkew = 0;
 
   const damp = (cur, target, dt, tau) => cur + (target - cur) * (1 - Math.exp(-dt / tau));
-  const EPS = 0.01;
 
   /* ---------------------------------------------------------
      3c. 每帧只做一次「先全部算完，再统一写」
@@ -187,7 +186,6 @@
      --------------------------------------------------------- */
   let rafId = 0;
   let lastT = 0;
-  let lastScrollY = window.scrollY;
 
   function paint() {
     for (const it of scrubEls) {
@@ -199,10 +197,6 @@
       }
     }
     if (heroEl) heroEl.style.setProperty('--hero-p', heroCur.toFixed(4));
-    if (mqInner) {
-      mqInner.style.transform =
-        `translate3d(${mqShift.toFixed(2)}px,0,0) skewX(${mqSkew.toFixed(2)}deg)`;
-    }
   }
 
   let heroCur = 0;
@@ -221,18 +215,7 @@
     const heroTarget = heroEl ? clamp01((y - heroEl.__top) / (vh * 0.85)) : 0;
     heroCur = damp(heroCur, heroTarget, dt, 90);
 
-    // 滚动速度（px/s）→ 跑马灯的附加偏移与斜切，带阻尼回中
-    const dy = y - lastScrollY;
-    lastScrollY = y;
-    const vel = dt > 0 ? dy / (dt / 1000) : 0;
-    mqTargetShift = Math.max(-90, Math.min(90, -vel * 0.045));
-    mqTargetSkew  = Math.max(-5, Math.min(5, -vel * 0.006));
-    mqShift = damp(mqShift, mqTargetShift, dt, 130);
-    mqSkew  = damp(mqSkew, mqTargetSkew, dt, 130);
-
-    let busy = Math.abs(heroCur - heroTarget) > 0.0008
-            || Math.abs(mqShift - mqTargetShift) > EPS
-            || Math.abs(mqSkew - mqTargetSkew) > EPS;
+    let busy = Math.abs(heroCur - heroTarget) > 0.0008;
     for (const it of scrubEls) {
       it.cur = damp(it.cur, it.target, dt, 85);
       if (Math.abs(it.target - it.cur) > 0.0008) busy = true;
@@ -242,7 +225,7 @@
     paint();
     // 追平之后就把循环停掉，不为了几个数字常驻空转
     if (busy) rafId = requestAnimationFrame(frame);
-    else { rafId = 0; mqShift = mqTargetShift = mqSkew = mqTargetSkew = 0; paint(); }
+    else { rafId = 0; paint(); }
   }
 
   function kick() {

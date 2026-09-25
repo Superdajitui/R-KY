@@ -56,13 +56,13 @@ const info = await page.evaluate(() => ({
   lineCount: document.querySelectorAll('.ln__in').length,
   lineHeadings: document.querySelectorAll('[data-scrub="lines"]').length,
   scrubOff: document.documentElement.classList.contains('scrub-off'),
-  mqInner: !!document.querySelector('.marquee__inner'),
+  marqueeSpans: document.querySelectorAll('.marquee__track > span').length,
 }));
 
 check(!info.scrubOff, '滚动动效初始化成功（没有走降级分支）');
 check(info.scrubCount >= 12, '注册了足够多的 scrub 元素', `${info.scrubCount} 个`);
 check(info.lineCount >= 5, '大标题已拆成行', `${info.lineCount} 行 / ${info.lineHeadings} 个标题`);
-check(info.mqInner, '跑马灯外层容器存在');
+check(info.marqueeSpans >= 8, '跑马灯重复了足够多遍', `${info.marqueeSpans} 遍`);
 
 // 首屏退场的 0 点：在欢迎页时 hero 必须是"没退场"的状态
 const atTop = await page.evaluate(() => {
@@ -177,22 +177,159 @@ const back = await page.evaluate(() => {
 check(back.heroP < 0.05 && back.stageOpacity > 0.99, '滚回顶部首屏完全复原',
   `--hero-p=${back.heroP.toFixed(3)} opacity=${back.stageOpacity.toFixed(2)}`);
 
-/* --- 断言 5：跑马灯响应滚动 --- */
-await page.evaluate(() => window.scrollTo(0, 1200));
-await sleep(120);
-await page.evaluate(() => window.scrollTo(0, 2400));
-await sleep(90);
-const mqBusy = await page.evaluate(() => {
-  const t = getComputedStyle(document.querySelector('.marquee__inner')).transform;
-  return t;
-});
-check(!/matrix\(1, 0, 0, 1, 0, 0\)|none/.test(mqBusy), '快速滚动时跑马灯有偏移/斜切响应', mqBusy);
+/* --- 断言 5：跑马灯是无缝无限循环 --- */
+/*
+   用户反馈跑马灯"滚动不连续"，要求"首尾相接循环滚动"。
+   无缝有两个条件，缺一个就会看着断掉：
+     a. 位移正好等于「一遍」的宽度（图案能对上）；
+     b. 任何时刻都盖满视口，即 轨道宽 - 一遍宽 ≥ 视口宽。
+   原来 2 遍走 -50%：a 满足、b 不满足 —— 1440px 屏上循环后半程右侧露白 421px。
+   所以这里不只查图案，还要**沿着整个循环扫一遍露白**。
+*/
+console.log('\n════ 跑马灯：首尾相接、全程不露白 ════');
+{
+  const mq = await page.evaluate(() => {
+    const track = document.querySelector('.marquee__track');
+    const box = document.querySelector('.marquee');
+    const spans = [...track.querySelectorAll('span')];
+    const cs = getComputedStyle(track);
+    return {
+      trackW: track.getBoundingClientRect().width,
+      boxW: box.getBoundingClientRect().width,
+      spanW: spans[0].getBoundingClientRect().width,
+      n: spans.length,
+      timing: cs.animationTimingFunction,
+      dur: parseFloat(cs.animationDuration),
+      // 回绕距离 = 关键帧里的百分比 × 轨道宽
+      toPct: (cs.animationName, 0),
+    };
+  });
+
+  const perSpan = info.marqueeSpans;
+  check(Math.abs(mq.trackW - mq.spanW * perSpan) < 1,
+    '轨道宽 = 一遍 × 遍数（没有多余空隙）',
+    `${mq.trackW.toFixed(0)} vs ${(mq.spanW * perSpan).toFixed(0)}px`);
+  check(mq.timing === 'linear', '匀速播放', mq.timing);
+
+  // 一轮的位移必须正好等于「一遍」的宽度。
+  //
+  // 这里从 CSSOM 里读 @keyframes 声明的百分比，再乘轨道宽 —— 确定性算法。
+  // 一开始是"把动画 delay 设成 -dur*0.999 再量 transform"，
+  // 结果量到 739.9px（期望 1000.1px）：
+  // animation-delay 是**相对于已流逝时间**做偏移的，动画早就跑了一会儿，
+  // 所以 currentTime = 已流逝 + |delay|，落在哪儿全看运气。
+  // 那个数字看起来"差不多"，很容易被当成测量误差放过去 —— 其实方法本身就不成立。
+  const decl = await page.evaluate(() => {
+    for (const sheet of document.styleSheets) {
+      let rules;
+      try { rules = sheet.cssRules; } catch { continue; }   // 跨域表跳过
+      for (const r of rules) {
+        if (r.type === CSSRule.KEYFRAMES_RULE && r.name === 'slide') {
+          const to = [...r.cssRules].find(k => k.keyText === '100%' || k.keyText === 'to');
+          const m = (to?.style?.transform || '').match(/translateX\(\s*(-?[\d.]+)%\s*\)/);
+          if (m) return { pct: Math.abs(parseFloat(m[1])) };
+        }
+      }
+    }
+    return null;
+  });
+
+  if (!decl) {
+    check(false, '能找到 @keyframes slide 的位移声明');
+  } else {
+    const shift = (decl.pct / 100) * mq.trackW;
+    check(Math.abs(shift - mq.spanW) < 2, '一轮位移正好等于一遍的宽度（图案能接上）',
+      `声明 ${decl.pct}% × 轨道 ${mq.trackW.toFixed(0)} = ${shift.toFixed(1)}px，一遍 ${mq.spanW.toFixed(1)}px`);
+    check(Math.abs(decl.pct - 100 / perSpan) < 0.01, `位移比例 = 1/遍数（1/${perSpan}）`,
+      `${decl.pct}% vs ${(100 / perSpan).toFixed(2)}%`);
+  }
+
+  // 沿整个循环扫一遍，任何时刻都不能露白
+  const worst = await page.evaluate(async () => {
+    const track = document.querySelector('.marquee__track');
+    const box = document.querySelector('.marquee');
+    const dur = parseFloat(getComputedStyle(track).animationDuration);
+    track.style.animationPlayState = 'paused';
+    let worstGap = 0, worstAt = 0;
+    for (let i = 0; i <= 40; i++) {
+      const f = i / 40;
+      track.style.animationDelay = `${(-f * dur).toFixed(2)}s`;
+      void track.offsetWidth;
+      const tr = track.getBoundingClientRect();
+      const br = box.getBoundingClientRect();
+      const gap = Math.max(br.right - tr.right, tr.left - br.left, 0);
+      if (gap > worstGap) { worstGap = gap; worstAt = f; }
+    }
+    track.style.animationPlayState = '';
+    track.style.animationDelay = '';
+    return { worstGap, worstAt };
+  });
+  check(worst.worstGap < 2, '整个循环里轨道始终盖满视口（不会露白）',
+    worst.worstGap < 2 ? '41 个采样点全部盖满'
+      : `最大露白 ${worst.worstGap.toFixed(0)}px @ 循环 ${(worst.worstAt * 100).toFixed(0)}%`);
+
+  // 悬停不能暂停：鼠标不动、页面往下滚时，跑马灯会从光标底下滑过去，
+  // 一停一走看着就是抖动（这是电脑端特有的问题）
+  const hoverPause = await page.evaluate(() => {
+    const track = document.querySelector('.marquee__track');
+    return getComputedStyle(track).animationPlayState === 'paused';
+  });
+  check(!hoverPause, '默认就是播放状态（没有悬停暂停）');
+
+  // 滚动过程中跑马灯的位移不受干扰
+  const mqSteady = await page.evaluate(async () => {
+    const track = document.querySelector('.marquee__track');
+    const samples = [];
+    const t0 = performance.now();
+    // 一边滚一边采样：跑马灯自己的 transform 应该只由 CSS 动画驱动
+    for (let i = 0; i < 40; i++) {
+      window.scrollBy(0, 60);
+      await new Promise(r => requestAnimationFrame(r));
+      const inline = track.style.transform;   // JS 不该往它身上写任何东西
+      samples.push(inline);
+    }
+    return { anyInline: samples.some(s => s && s !== 'none'), ms: performance.now() - t0 };
+  });
+  check(!mqSteady.anyInline, '滚动时脚本没有插手跑马灯的位移（只由 CSS 匀速驱动）');
+
+  /* 自检：还原成原来的写法（只留 2 遍 + 走 -50%），确认"露白"这条断言真的抓得住。
+     只查"轨道宽 = 一遍 × 遍数"是不够的 —— 那个条件在 2 遍时也成立，
+     真正缺的是"盖满视口"。这把尺子量的是画面，所以换几遍都能量出来。 */
+  const probe = await page.evaluate(async () => {
+    const st = document.createElement('style');
+    st.id = '__mqProbe';
+    // 后写的 @keyframes 同名会覆盖前面的
+    st.textContent = '@keyframes slide{to{transform:translateX(-50%)}}';
+    document.head.appendChild(st);
+    const spans = [...document.querySelectorAll('.marquee__track > span')];
+    spans.slice(2).forEach(s => { s.style.display = 'none'; });
+
+    const track = document.querySelector('.marquee__track');
+    const box = document.querySelector('.marquee');
+    const dur = parseFloat(getComputedStyle(track).animationDuration);
+    track.style.animationPlayState = 'paused';
+    let worstGap = 0;
+    for (let i = 0; i <= 40; i++) {
+      track.style.animationDelay = `${(-(i / 40) * dur).toFixed(2)}s`;
+      void track.offsetWidth;
+      const tr = track.getBoundingClientRect();
+      const br = box.getBoundingClientRect();
+      worstGap = Math.max(worstGap, Math.max(br.right - tr.right, tr.left - br.left, 0));
+    }
+    st.remove();
+    spans.slice(2).forEach(s => { s.style.display = ''; });
+    track.style.animationPlayState = '';
+    track.style.animationDelay = '';
+    return { worstGap, n: spans.length };
+  });
+  check(probe.worstGap > 50, '还原成 2 遍写法后检查能抓到露白（证明这条断言有效）',
+    `2 遍时最大露白 ${probe.worstGap.toFixed(0)}px`);
+}
 
 /* --- 断言 6：停下来之后 raf 循环要停 --- */
 await sleep(1400);
-const mqIdle = await page.evaluate(() =>
-  getComputedStyle(document.querySelector('.marquee__inner')).transform);
-check(/matrix\(1, 0, 0, 1, 0, 0\)|none/.test(mqIdle), '停止滚动后跑马灯回正', mqIdle);
+const settle = await page.evaluate(() => document.querySelector('.marquee__track').style.transform);
+check(!settle || settle === 'none', '滚动结束后脚本没有残留内联位移', settle || 'none');
 
 console.log('\n  控制台问题:', problems.length ? problems.slice(0, 4).join(' | ') : '无');
 check(problems.length === 0, '全程无 JS 报错');

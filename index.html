@@ -177,15 +177,28 @@
     </div>
   </section>
 
-  <!-- ══════════ 跑马灯 ══════════ -->
+  <!-- ══════════ 跑马灯 ══════════
+       同一句重复 8 遍，动画走 -12.5%（正好是一遍的宽度），首尾相接无限循环。
+
+       为什么是 8 遍、而不是原来的 2 遍：
+       无缝循环有两个条件，原来只满足了第一个。
+         a. 图案能对上：位移必须正好等于「一遍」的宽度 —— 2 遍走 -50% 也满足；
+         b. **任何时刻都要盖满视口**：轨道宽 - 一遍宽 ≥ 视口宽，即 (N-1)×一遍 ≥ 视口。
+       原来 N=2、一遍约 1000px，只能盖住 1000px 的视口。实测 1440px 屏上
+       循环走到后半程右侧会露出 421px 空白，2560px 屏上几乎全程露白 ——
+       那才是看着「断掉、不连续」的真正原因。
+       N=8 时 (8-1)×1000 = 7000px，覆盖到 7000px 宽的屏幕都绰绰有余；
+       位移仍是一遍的宽度，所以速度和原来完全一样（34 秒走一遍）。 -->
   <div class="marquee" aria-hidden="true">
-    <!-- 外层只负责"跟滚动速度挂钩的偏移和斜切"（main.js 写 transform），
-         内层保持原来的 CSS 匀速动画。两层分开，互不覆盖。 -->
-    <div class="marquee__inner">
-      <div class="marquee__track">
-        <span>学生 <b>✦</b> 开发者 <b>✦</b> 创作者 <b>✦</b> STUDENT <b>✦</b> DEVELOPER <b>✦</b> CREATOR <b>✦</b> </span>
-        <span>学生 <b>✦</b> 开发者 <b>✦</b> 创作者 <b>✦</b> STUDENT <b>✦</b> DEVELOPER <b>✦</b> CREATOR <b>✦</b> </span>
-      </div>
+    <div class="marquee__track">
+      <span>学生 <b>✦</b> 开发者 <b>✦</b> 创作者 <b>✦</b> STUDENT <b>✦</b> DEVELOPER <b>✦</b> CREATOR <b>✦</b> </span>
+      <span>学生 <b>✦</b> 开发者 <b>✦</b> 创作者 <b>✦</b> STUDENT <b>✦</b> DEVELOPER <b>✦</b> CREATOR <b>✦</b> </span>
+      <span>学生 <b>✦</b> 开发者 <b>✦</b> 创作者 <b>✦</b> STUDENT <b>✦</b> DEVELOPER <b>✦</b> CREATOR <b>✦</b> </span>
+      <span>学生 <b>✦</b> 开发者 <b>✦</b> 创作者 <b>✦</b> STUDENT <b>✦</b> DEVELOPER <b>✦</b> CREATOR <b>✦</b> </span>
+      <span>学生 <b>✦</b> 开发者 <b>✦</b> 创作者 <b>✦</b> STUDENT <b>✦</b> DEVELOPER <b>✦</b> CREATOR <b>✦</b> </span>
+      <span>学生 <b>✦</b> 开发者 <b>✦</b> 创作者 <b>✦</b> STUDENT <b>✦</b> DEVELOPER <b>✦</b> CREATOR <b>✦</b> </span>
+      <span>学生 <b>✦</b> 开发者 <b>✦</b> 创作者 <b>✦</b> STUDENT <b>✦</b> DEVELOPER <b>✦</b> CREATOR <b>✦</b> </span>
+      <span>学生 <b>✦</b> 开发者 <b>✦</b> 创作者 <b>✦</b> STUDENT <b>✦</b> DEVELOPER <b>✦</b> CREATOR <b>✦</b> </span>
     </div>
   </div>
 

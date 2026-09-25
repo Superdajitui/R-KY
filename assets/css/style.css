@@ -521,6 +521,18 @@ main{position:relative;z-index:2;background:var(--ink)}
 /* ============================================================
    跑马灯
    ============================================================ */
+/* 跑马灯：8 遍同一句，走 -12.5%（正好一遍），首尾相接无限循环。
+   ------------------------------------------------------------
+   无缝的两个条件（原来只满足了一半）：
+     a. 位移 = 一遍的宽度：8 遍走 -12.5% 恰好是一遍，图案能对上；
+     b. 任何时刻盖满视口：(8-1) × 一遍宽 ≈ 7000px ≥ 视口宽。
+   原先是 2 遍走 -50%，a 满足但 b 不满足 —— 1440px 屏上循环后半程
+   右侧露白 421px，2560px 屏上几乎全程露白，看着就是"断了一下又接上"。
+   位移距离没变（仍是一遍宽），所以速度手感和原来一致。
+
+   另外这里【不做悬停暂停】：鼠标停在原地、页面往下滚时，跑马灯会从
+   光标底下滑过去，于是滚一下停一下、再滚再停 —— 在电脑上看着就是抖动。
+   这段文字是装饰性的（父层 aria-hidden），不需要停下来读。 */
 .marquee{
   position:relative;z-index:5;
   border-block:1px solid var(--ink-3);
@@ -534,8 +546,7 @@ main{position:relative;z-index:2;background:var(--ink)}
   padding-right:2rem;white-space:nowrap;
 }
 .marquee__track b{color:var(--neon);font-weight:400;padding:0 .4rem}
-@keyframes slide{to{transform:translateX(-50%)}}
-.marquee:hover .marquee__track{animation-play-state:paused}
+@keyframes slide{to{transform:translateX(-12.5%)}}
 
 /* ============================================================
    通用板块
