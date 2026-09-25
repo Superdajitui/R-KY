@@ -78,7 +78,8 @@ check(s.imgLoaded, '照片已加载', s.imgSrc);
 check(s.imgSrc.includes('hero-composite'), '取用的是首屏图', s.imgSrc);
 check(s.pictureDisplay !== 'none', '照片容器可见');
 check(!s.leftoverCanvas, '没有残留的流体 canvas');
-check(s.wordOpacity === '1', '首屏大字名可见');
+// 首屏大字名的可见性要等滚下去之后再查 —— 开场页期间它还藏在下面，
+// opacity 是 0（正常初始态，不是 bug）
 check(s.fontAnton, 'Anton 字体（英文大字）已加载');
 check(s.fontInter, 'Inter 字体（正文）已加载');
 check(s.cnStroke && s.cnStroke !== '0px', '中文描边效果生效', s.cnStroke);
@@ -108,6 +109,26 @@ await page.screenshot({ path: 'tools/shots/live-welcome.png' });
 await page.evaluate(() => window.scrollTo(0, innerHeight));
 await sleep(1800);
 await page.screenshot({ path: 'tools/shots/live-desktop.png' });
+
+const heroState = await page.evaluate(() => {
+  const word = document.querySelector('.hero__word--top');
+  const portrait = document.querySelector('.hero__portrait');
+  const nav = document.querySelector('.nav');
+  const hero = document.querySelector('.hero').getBoundingClientRect();
+  return {
+    wordOpacity: word ? getComputedStyle(word).opacity : '0',
+    portraitOpacity: portrait ? getComputedStyle(portrait).opacity : '0',
+    navOpacity: nav ? getComputedStyle(nav).opacity : '0',
+    heroTop: Math.round(hero.top),
+    isHero: document.body.classList.contains('is-hero'),
+  };
+});
+console.log('\n首屏（滚下去之后）');
+check(heroState.heroTop <= 2, '主页已滑到位', `top=${heroState.heroTop}`);
+check(heroState.isHero, 'is-hero 已触发');
+check(heroState.wordOpacity === '1', '首屏大字名可见', `opacity=${heroState.wordOpacity}`);
+check(heroState.portraitOpacity === '1', '人物已入场', `opacity=${heroState.portraitOpacity}`);
+check(heroState.navOpacity === '1', '导航已出现');
 
 /* ---------- 2. 滚动到底，确认所有板块都显现 ---------- */
 for (const sel of ['#stats', '#about', '#work', '#skills', '#contact']) {
@@ -148,6 +169,9 @@ const mob = await browser.newPage();
 await mob.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
 await mob.goto(URL_BASE, { waitUntil: 'networkidle0', timeout: 60000 });
 await sleep(3000);
+// 同样要先滚过开场页，否则量到的是它在折叠线以下的位置
+await mob.evaluate(() => window.scrollTo(0, innerHeight));
+await sleep(1800);
 const sm = await mob.evaluate(() => {
   const img = document.querySelector('.hero__portrait img');
   const pick = sel => {
