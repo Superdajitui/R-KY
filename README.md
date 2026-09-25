@@ -349,24 +349,51 @@ node tools/build-cjk-font.mjs    # 按字符集生成子集 → assets/fonts/
 > 会回退到系统字体，字形又和其他字对不上。
 > `test:welcome` 里有一条检查会盯着「中文是否全部走自托管字体」。
 
-### 镂空描边的坑
+### 镂空描边的三个坑
 
-`.welcome__line--outline` 用的是「背景色填充 + `paint-order:stroke fill`」，
-而**不是**常见的 `color:transparent`：
+`.welcome__line--outline` 的做法是「描边 + 一层同字填充盖住内半部分」。
+看起来简单，实际连着踩了三次：
+
+**① 不能填 `transparent`（常规写法）。**
+思源黑体是**由重叠笔画拼合**的，填透明的话每个笔画的轮廓都会画出来，
+字内部出现一道道交叉线（"我""的""网"尤其明显）。
+
+**② 不能用 `paint-order:stroke fill`。**
+它能盖住交叉线，但**移动端不可靠** —— 微信/QQ 这类内置浏览器实测完全不生效；
+而且它会连描边的**内半部分**一起盖掉，桌面上 2px 描边凭空变成 1px。
+两个现象同时出现，正好对上「手机没变化、电脑变细了」。
+
+**③ 换 `::after` 叠层，但要记得写描边颜色。**
 
 ```css
-color:var(--neon);              /* 填背景色，不是透明 */
--webkit-text-stroke:2px var(--ink);
-paint-order:stroke fill;        /* 先描边后填充，填充盖住内部交叉线 */
+.welcome__line--outline > span{
+  position:relative;
+  color:transparent;
+  -webkit-text-stroke:clamp(3px, 0.028em, 4.4px) var(--ink);  /* 颜色不能省！ */
+}
+.welcome__line--outline > span::after{
+  content:attr(data-text);       /* HTML 上要写 data-text，叠加层靠它取原文 */
+  position:absolute;left:0;top:0;
+  color:var(--neon);             /* 填背景色，盖住交叉线和描边内半 */
+  -webkit-text-stroke:0;
+}
 ```
 
-因为思源黑体是**由重叠笔画拼合**的，填透明的话每个笔画的轮廓都会画出来，
-字内部会出现一道道交叉线（"我""的""网"尤其明显）。
-填充成背景色后，`paint-order` 让填充盖在上面，交叉线就被遮住了。
+`-webkit-text-stroke` 是**简写属性**，只给宽度的话颜色取 `currentColor`，
+而这里 `color` 是 `transparent` —— **描边会整个消失，页面看着还挺正常**。
+这个 bug 肉眼没发现，是靠数渲染出来的深色像素才抓到的。
+
+**宽度写的是目标值的两倍**（内半被填充盖住，外半才是最终看到的）。
+用 `em` 而不是 `px`：写死 px 的话，手机上 4px 配 47px 的字显得笨重，
+桌面上 4px 配 152px 又偏精致，同一个设计在两种尺寸下观感对不上。
 
 **这招只适用于纯色背景。** 首屏那个压在照片上的「任恺昱」不能这么干 ——
 填充会挡住照片和脖子，所以它仍然是 `color:transparent`，
-代价是字形内部有线框感。这是刻意的取舍，不是 bug。
+代价是字形内部保留线框感。这是刻意的取舍，不是 bug。
+
+`npm run test:welcome` 里有 6 条检查盯着这块：描边宽度、描边颜色、
+填充层是否存在、以及**镂空区域的实际墨量**（只有描边 → 个位数百分比；
+填充层丢了会明显变高；描边丢了会变成 0）。
 
 ---
 

@@ -270,17 +270,36 @@ body.is-ready .welcome__label{opacity:1;transform:none}
 }
 body.is-ready .welcome__line > span{transform:none}
 body.is-ready .welcome__line:nth-child(2) > span{transition-delay:.13s}
+/* 镂空描边的做法：描边 + 一层同字填充盖住内半部分。
+   ------------------------------------------------------------
+   不能填 transparent（常规写法）：思源黑体是由重叠笔画拼合的，
+   每个笔画的轮廓都会画出来，字内部会出现一道道交叉线。
+   也不能用 paint-order:stroke fill —— 那个属性在移动端浏览器上
+   （尤其微信/QQ 这类内置浏览器）支持不稳，实测手机上完全没生效，
+   而且它会让填充盖掉描边的内半部分，桌面上描边凭空细了一半。
+
+   改用 ::after 叠一层同字的纯填充：paint-order 管不着它，
+   只要支持 -webkit-text-stroke 的浏览器表现就一致。
+   描边宽度要写成目标值的两倍 —— 内半部分会被填充盖住，
+   剩下外半部分才是最终看到的粗细。 */
 .welcome__line--outline > span{
-  /* 镂空描边的做法：用【背景色】填充 + 先描边后填充。
-     如果填 transparent（常规写法），描边会把每个笔画的轮廓都画出来 ——
-     而思源黑体是由重叠笔画拼合的，字内部会出现一道道交叉线。
-     填充成背景色后，paint-order 让填充盖在上面，交叉线就被遮住了，
-     只剩字形外缘那一圈描边。
-     注意：这招只适用于纯色背景；首屏那个压在照片上的「任恺昱」
-     不能这么干，否则填充会挡住照片。 */
-  color:var(--neon);
-  -webkit-text-stroke:2px var(--ink);
-  paint-order:stroke fill;
+  position:relative;
+  color:transparent;
+  /* 描边宽度跟着字号走，而不是写死 px。
+     写死的话手机上 4px 配 47px 的字会显得笨重，桌面上 4px 配 152px 又偏精致 ——
+     同一个设计在两种尺寸下观感对不上。用 em 让它等比缩放，
+     再夹一个下限，免得小屏上细到断线。
+     数值是目标可见粗细的两倍：内半部分会被下面的填充盖住。
+     注意颜色不能省 —— -webkit-text-stroke 是简写属性，只给宽度的话
+     颜色取 currentColor，而这里的 color 是 transparent，描边会整个消失。 */
+  -webkit-text-stroke:clamp(3px, 0.028em, 4.4px) var(--ink);
+}
+.welcome__line--outline > span::after{
+  content:attr(data-text);
+  position:absolute;left:0;top:0;
+  color:var(--neon);                    /* 填背景色，盖住内部交叉线和描边内半 */
+  -webkit-text-stroke:0;
+  pointer-events:none;
 }
 
 .welcome__foot{

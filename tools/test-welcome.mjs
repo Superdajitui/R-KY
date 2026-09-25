@@ -130,6 +130,54 @@ const fontRes = await page.evaluate(() =>
 console.log(`  字体请求: ${fontRes.map(f => `${f.name} ${f.size}KB`).join(', ') || '（无）'}`);
 check(fontRes.length > 0 && fontRes[0].size > 0, '字体文件网络请求正常');
 
+/* ═══════════ 镂空描边 ═══════════
+   镂空字用「描边 + 一层同字填充」实现，两个地方都极易出错：
+     · 填充层丢了 → 内部笔画交叉线全露出来（思源黑体是重叠笔画拼合的）
+     · 描边颜色丢了 → 描边整个消失，页面看着还挺正常，肉眼很难发现
+   第二点真发生过：-webkit-text-stroke 是简写属性，只给宽度的话
+   颜色取 currentColor，而 color 是 transparent，描边就没了。
+   所以这里既查计算样式，也数渲染出来的深色像素。 */
+console.log('\n════ 镂空描边 ════');
+const stroke = await page.evaluate(() => {
+  const el = document.querySelector('.welcome__line--outline > span');
+  if (!el) return null;
+  const cs = getComputedStyle(el);
+  const after = getComputedStyle(el, '::after');
+  const r = el.getBoundingClientRect();
+  return {
+    width: cs.webkitTextStrokeWidth,
+    color: cs.webkitTextStrokeColor,
+    fillColor: cs.color,
+    afterContent: after.content,
+    afterColor: after.color,
+    box: { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) },
+  };
+});
+
+console.log(`  描边: ${stroke.width} ${stroke.color}`);
+console.log(`  填充层 ::after: content=${stroke.afterContent} color=${stroke.afterColor}`);
+check(stroke.width && stroke.width !== '0px', '描边宽度已设置', stroke.width);
+check(stroke.color && !/rgba?\([^)]*,\s*0\)/.test(stroke.color), '描边颜色不是透明', stroke.color);
+check(stroke.fillColor && /rgba?\([^)]*,\s*0\)/.test(stroke.fillColor), '底层文字填透明（只留描边）');
+check(stroke.afterContent !== 'none', '填充层存在');
+
+// 数像素：镂空区域内必须有深色描边，且不能多到糊成一片
+const shotBuf = await page.screenshot();
+const crop = {
+  left: Math.max(0, stroke.box.x), top: Math.max(0, stroke.box.y),
+  width: Math.min(stroke.box.w, 1440 - stroke.box.x),
+  height: Math.min(stroke.box.h, 900 - stroke.box.y),
+};
+const { data, info } = await sharp(shotBuf).extract(crop).raw().toBuffer({ resolveWithObject: true });
+let ink = 0, total = info.width * info.height;
+for (let i = 0; i < data.length; i += info.channels) {
+  if (data[i] < 110 && data[i + 1] < 110 && data[i + 2] < 110) ink++;
+}
+const inkPct = ink / total * 100;
+console.log(`  镂空区域墨量: ${inkPct.toFixed(2)}%（只有描边 → 个位数；填充层丢了会更高）`);
+check(inkPct > 0.5, '描边确实渲染出来了（不是隐形）', `${inkPct.toFixed(2)}%`);
+check(inkPct < 25, '没有糊成实心（填充层正常工作）', `${inkPct.toFixed(2)}%`);
+
 /* ═══════════ 阶段二：下滑揭幕 ═══════════ */
 console.log('\n════ 阶段二：下滑进入主页 ════');
 
