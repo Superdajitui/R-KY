@@ -932,11 +932,14 @@ html.js .contact__glow{
   .stats__row{grid-template-columns:repeat(2,1fr)}
   .cards{grid-template-columns:1fr}
   /* 热爱区：窄屏左右并排会挤成一行行碎字，改成上下堆叠。
-     "左图右文"在单栏里没有意义，所以图片统一放上面，三行保持一致。
+     "左图右文"在单栏里没有意义，所以把 order 归零、回到 DOM 顺序：
+     文字在上、图片在下（三行一致）。
+     偶数行那条 order:-1 必须显式覆盖掉 —— 它的特异性更高，
+     不写的话第二行（赛车）会把图片顶到文字前面，三行就不齐了。
      横向靠拢的位移也一并去掉 —— 竖排再左右滑会很怪。 */
   .passion{grid-template-columns:1fr;gap:1.6rem}
   .passion .passion__figure,
-  .passion:nth-child(even) .passion__figure{order:-1}
+  .passion:nth-child(even) .passion__figure{order:0}
   html.js .passion__body,
   html.js .passion__figure{transform:none}
   .passion__text{max-width:56ch}

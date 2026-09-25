@@ -460,16 +460,25 @@ const mob = await mp.evaluate(() => {
     .filter(el => !/matrix\(1, 0, 0, 1, 0, 0\)/.test(getComputedStyle(el).transform)).length;
   const lines = [...document.querySelectorAll('.ln__in')]
     .filter(el => !/matrix\(1, 0, 0, 1, 0, 0\)|none/.test(getComputedStyle(el).transform)).length;
-  // srcset 有没有真的起作用：2x 手机应当拿到 880 那档，而不是固定给 520
+  // srcset 有没有真的起作用：2x 手机应当拿到更大的一档，而不是最小那档
   const passionSrc = [...document.querySelectorAll('#passions img')]
     .map(i => (i.currentSrc || i.src).split('/').pop());
-  return { bad, bars, lines, passionSrc };
+  // 手机上顺序：文字在上、图片在下（三行一致）。
+  // 偶数行桌面端有 order:-1，窄屏必须显式归零，否则第二行会反过来。
+  const mobOrder = [...document.querySelectorAll('.passion')].map(p => {
+    const b = p.querySelector('.passion__body').getBoundingClientRect();
+    const f = p.querySelector('.passion__figure').getBoundingClientRect();
+    return b.top < f.top ? '文上' : '图上';
+  });
+  return { bad, bars, lines, passionSrc, mobOrder };
 });
 check(mob.bad.length === 0, '手机上滚到底也没有内容被藏住',
   mob.bad.length ? [...new Set(mob.bad)].join(' ') : '全部可见');
 check(mob.passionSrc.every(s => !s.includes('-700.')),
   '2x 手机上照片取用了更大的一档（srcset 生效，没退到最小那档）',
   mob.passionSrc.join(' '));
+check(mob.mobOrder.every(o => o === '文上'),
+  '手机上三行都是文字在上、图片在下', mob.mobOrder.join(' / '));
 check(mob.bars === 0 && mob.lines === 0, '手机上进度条与标题都到位',
   `条 ${mob.bars} / 行 ${mob.lines}`);
 await mp.close();
