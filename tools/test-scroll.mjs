@@ -330,7 +330,7 @@ console.log('\n════ 跑马灯：首尾相接、全程不露白 ═══
 /*
    图片坏掉是最容易被忽略的一类失败：布局还在、位置也对，
    只是那块是空的，而本地开着缓存看首屏根本发现不了。
-   顺便验一下三张都是 4:5 —— 排版是靠"比例一致 + 纵向错落"成立的，
+   顺便验一下三张都是 1:1 —— 排版是靠"比例一致 + 左右交错"成立的，
    谁换了一张别的比例，构图就散了。
 */
 {
@@ -356,9 +356,23 @@ console.log('\n════ 跑马灯：首尾相接、全程不露白 ═══
   check(figs.length === 3, '热爱区有三张照片', `${figs.length} 张`);
   check(notLoaded.length === 0, '三张照片都真的加载出来了',
     notLoaded.length ? notLoaded.map(f => f.src).join(' ') : figs.map(f => f.src).join(' '));
-  check(figs.every(f => Math.abs(f.boxRatio - 0.8) < 0.01), '三张画框都是 4:5（构图靠比例一致）',
+  check(figs.every(f => Math.abs(f.boxRatio - 1) < 0.01), '三张画框都是 1:1（构图靠比例一致）',
     figs.map(f => f.boxRatio).join(' / '));
   check(figs.every(f => f.covers), '图片铺满画框（没有留白或变形）');
+
+  // 左右交错是这次改版的核心：三行必须是 文/图、图/文、文/图。
+  // 只靠 order 翻转，很容易被后来的改动悄悄弄成一边倒。
+  const order = await page.evaluate(() =>
+    [...document.querySelectorAll('.passion')].map(p => {
+      const b = p.querySelector('.passion__body').getBoundingClientRect();
+      const f = p.querySelector('.passion__figure').getBoundingClientRect();
+      return b.left < f.left ? '文' : '图';
+    }));
+  check(order.join('') === '文图文', '三行左右交错（文/图 → 图/文 → 文/图）',
+    order.join(' / '));
+  const sideCount = await page.evaluate(() =>
+    [...document.querySelectorAll('.passion')].length);
+  check(sideCount === 3, '热爱区是三行（上下排开）', `${sideCount} 行`);
 }
 
 /* --- 断言 8：停下来之后 raf 循环要停 --- */
@@ -453,8 +467,8 @@ const mob = await mp.evaluate(() => {
 });
 check(mob.bad.length === 0, '手机上滚到底也没有内容被藏住',
   mob.bad.length ? [...new Set(mob.bad)].join(' ') : '全部可见');
-check(mob.passionSrc.every(s => s.includes('-880.')),
-  '2x 手机上照片取用了 880 那档（srcset 生效）',
+check(mob.passionSrc.every(s => !s.includes('-700.')),
+  '2x 手机上照片取用了更大的一档（srcset 生效，没退到最小那档）',
   mob.passionSrc.join(' '));
 check(mob.bars === 0 && mob.lines === 0, '手机上进度条与标题都到位',
   `条 ${mob.bars} / 行 ${mob.lines}`);

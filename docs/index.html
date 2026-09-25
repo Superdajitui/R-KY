@@ -281,70 +281,67 @@
       <h2 class="sec__title" data-scrub="lines">赛道、取景框，<em>和一副耳机</em>。</h2>
 
       <div class="passions__grid">
-        <!-- 三栏各自带一张照片，列与列之间纵向错开（见 .passion:nth-child 的 margin），
-             三张统一裁成 4:5 —— 比例一致 + 纵向错落 才是"排版有设计感"；
-             三张各不相同的比例再叠加错开，看起来只会是乱。
-             错开的量是有意的设计，不是没对齐（并排同步那条检查只盯同一高度的元素）。 -->
+        <!-- 一行一个爱好，左右交错：文字 / 图片 / 图片 / 文字 / 文字 / 图片。
+             DOM 顺序固定是「文字在前、图片在后」，偶数行用 order 把图片挪到左边，
+             这样 CSS 只要一条 :nth-child(even) 就能翻转，不用改结构。
+             图片统一 1:1 —— 摄影的相机在这张竖图里几乎满高，裁横比例会切到机身。 -->
         <article class="passion" data-scrub="rise">
-          <span class="passion__idx">01</span>
+          <div class="passion__body">
+            <span class="passion__idx">01</span>
+            <h3 class="passion__title">摄影</h3>
+            <p class="passion__en">Photography</p>
+            <p class="passion__text">
+              我喜欢摄影，因为它逼人慢下来。取景框是个很诚实的地方 ——
+              你怎么看世界，它就怎么还给你。多数时候我拍的都不是什么大场面，
+              只是一段刚好对的光。
+            </p>
+          </div>
           <figure class="passion__figure">
-            <picture>
-              <!-- 用 srcset + sizes 让浏览器自己挑，而不是 media 切换：
-                   手机 2x 屏需要 ~720px，media 切换只会固定给 520（偏软）；
-                   srcset 下 2x 手机会拿 880、1x 桌面会拿 520，各取所需。 -->
-              <img src="assets/img/passion-photography-880.webp"
-                   srcset="assets/img/passion-photography-520.webp 520w, assets/img/passion-photography-880.webp 880w"
-                   sizes="(max-width:1000px) 92vw, 30vw"
-                   alt="一台尼康 Z fc 相机"
-                   width="880" height="1100" loading="lazy" decoding="async">
-            </picture>
+            <img src="assets/img/passion-photography-1100.webp"
+                 srcset="assets/img/passion-photography-700.webp 700w, assets/img/passion-photography-1100.webp 1100w"
+                 sizes="(max-width:1000px) 92vw, 46vw"
+                 alt="一台尼康 Z fc 相机"
+                 width="1100" height="1100" loading="lazy" decoding="async">
           </figure>
-          <h3 class="passion__title">摄影</h3>
-          <p class="passion__en">Photography</p>
-          <p class="passion__text">
-            我喜欢摄影，因为它逼人慢下来。取景框是个很诚实的地方 ——
-            你怎么看世界，它就怎么还给你。多数时候我拍的都不是什么大场面，
-            只是一段刚好对的光。
-          </p>
         </article>
 
         <article class="passion" data-scrub="rise">
-          <span class="passion__idx">02</span>
+          <div class="passion__body">
+            <span class="passion__idx">02</span>
+            <h3 class="passion__title">赛车</h3>
+            <p class="passion__en">Motorsport</p>
+            <p class="passion__text">
+              我喜欢赛车。不只是因为快，而是那个速度里，一条弯道的走线值得被
+              讨论一整个下午。那是把直觉、纪律和物理规律，同时压进三秒钟的运动。
+            </p>
+          </div>
           <figure class="passion__figure">
-            <picture>
-              <img src="assets/img/passion-motorsport-880.webp"
-                   srcset="assets/img/passion-motorsport-520.webp 520w, assets/img/passion-motorsport-880.webp 880w"
-                   sizes="(max-width:1000px) 92vw, 30vw"
-                   alt="穿着橙色赛服的 F1 车手走过赛道"
-                   width="880" height="1100" loading="lazy" decoding="async">
-            </picture>
+            <img src="assets/img/passion-motorsport-1100.webp"
+                 srcset="assets/img/passion-motorsport-700.webp 700w, assets/img/passion-motorsport-1100.webp 1100w"
+                 sizes="(max-width:1000px) 92vw, 46vw"
+                 alt="穿着橙色赛服的 F1 车手走过赛道"
+                 width="1100" height="1100" loading="lazy" decoding="async">
           </figure>
-          <h3 class="passion__title">赛车</h3>
-          <p class="passion__en">Motorsport</p>
-          <p class="passion__text">
-            我喜欢赛车。不只是因为快，而是那个速度里，一条弯道的走线值得被
-            讨论一整个下午。那是把直觉、纪律和物理规律，同时压进三秒钟的运动。
-          </p>
         </article>
 
         <article class="passion" data-scrub="rise">
-          <span class="passion__idx">03</span>
+          <div class="passion__body">
+            <span class="passion__idx">03</span>
+            <h3 class="passion__title">音乐</h3>
+            <p class="passion__en">Music · 孙燕姿</p>
+            <p class="passion__text">
+              我听孙燕姿。从《天黑黑》到《遇见》，她的歌里几乎没有声嘶力竭，
+              只有把话好好说完的克制。那正好是我喜欢的音量 ——
+              也是我做事的音量。
+            </p>
+          </div>
           <figure class="passion__figure">
-            <picture>
-              <img src="assets/img/passion-music-880.webp"
-                   srcset="assets/img/passion-music-520.webp 520w, assets/img/passion-music-880.webp 880w"
-                   sizes="(max-width:1000px) 92vw, 30vw"
-                   alt="孙燕姿《未完成》专辑封面"
-                   width="880" height="1100" loading="lazy" decoding="async">
-            </picture>
+            <img src="assets/img/passion-music-1100.webp"
+                 srcset="assets/img/passion-music-700.webp 700w, assets/img/passion-music-1100.webp 1100w"
+                 sizes="(max-width:1000px) 92vw, 46vw"
+                 alt="孙燕姿《未完成》专辑封面"
+                 width="1100" height="1100" loading="lazy" decoding="async">
           </figure>
-          <h3 class="passion__title">音乐</h3>
-          <p class="passion__en">Music · 孙燕姿</p>
-          <p class="passion__text">
-            我听孙燕姿。从《天黑黑》到《遇见》，她的歌里几乎没有声嘶力竭，
-            只有把话好好说完的克制。那正好是我喜欢的音量 ——
-            也是我做事的音量。
-          </p>
         </article>
       </div>
     </div>
@@ -422,10 +419,12 @@
     <div class="contact__glow" aria-hidden="true"></div>
     <div class="wrap">
       <p class="sec__label" data-reveal><i>06</i> 联系 / CONTACT</p>
-      <!-- data-scrub-to="0.72"：联系区是全站最后一块，后面没有多少滚动余量了。
-           用默认区间的话，邮箱按钮都露出来了标题还在 85% 透明度 ——
-           CTA 自己半透明，等于拆自己的台。0.72 让它在视口 72% 处就显示完。 -->
-      <h2 class="contact__big" data-scrub="lines" data-scrub-to="0.72">想更了解我？<br><em>往下看</em>，有邮箱。</h2>
+      <!-- data-scrub-to="0.78"：联系区是全站最后一块，后面没有多少滚动余量了。
+           值从 0.72 提到 0.78 是因为热爱区改成三行大图后页面变高，
+           "页面滚到底时元素能升到多高"跟着变了，0.72 下邮箱按钮露出时
+           标题第二行还停在 98% 透明度 —— 差一点点，但 CTA 不该是灰的。
+           这条由 test-scroll 的「按钮可见时标题必须已完全显示」盯着。 -->
+      <h2 class="contact__big" data-scrub="lines" data-scrub-to="0.78">想更了解我？<br><em>往下看</em>，有邮箱。</h2>
 
       <div class="contact__row" data-scrub="rise">
         <a class="btn btn--neon btn--big" href="mailto:superdajitui@outlook.com" data-cursor="lg">
