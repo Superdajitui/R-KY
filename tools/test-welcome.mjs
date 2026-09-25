@@ -118,10 +118,14 @@ for (const [label, sel] of fontChecks) {
 }
 check(allNoto, '中文全部走自托管字体（各平台渲染一致）');
 
-// 字体确实被下载了，且没有 404
+// 字体确实被下载了，且没有 404。
+// 注意：document.fonts.check() 只判断「字体加载了没」，
+// **不检查字形是否存在** —— 拿生僻字试探它照样返回 true。
+// 所以「子集是否覆盖了页面用到的所有汉字」由 check-font-coverage.mjs
+// 用纯 Node 比对字符表来把关，不在这里做。
 const fontLoaded = await page.evaluate(() =>
   document.fonts.check('900 100px "Noto Sans SC"', '欢迎来到我的个人网站'));
-check(fontLoaded, 'Noto Sans SC 子集已加载且覆盖所需字形');
+check(fontLoaded, 'Noto Sans SC 子集已加载');
 
 const fontRes = await page.evaluate(() =>
   performance.getEntriesByType('resource')

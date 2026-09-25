@@ -604,7 +604,10 @@ section{position:relative;scroll-margin-top:84px}
   margin:.9rem 0 .7rem;transition:color .35s;
 }
 .card:hover .card__title{color:var(--neon)}
-.card__desc{font-size:.9rem;color:var(--mute);max-width:46ch;margin-bottom:auto;text-wrap:pretty}
+/* balance 而不是 pretty：卡片描述常常正好卡在换行边缘，
+   pretty 只避免孤字，balance 会把两行拉齐 ——
+   否则中文会出现「…重新分 / 配光。」这种把词劈开的断法。 */
+.card__desc{font-size:.9rem;color:var(--mute);max-width:46ch;margin-bottom:auto;text-wrap:balance}
 .card__tags{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:1.5rem}
 .card__tags li{
   font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;
