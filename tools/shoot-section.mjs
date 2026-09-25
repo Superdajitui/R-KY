@@ -9,12 +9,16 @@
  * 用法:
  *   node tools/shoot-section.mjs passions
  *   node tools/shoot-section.mjs about contact
+ *   node tools/shoot-section.mjs passions https://superdajitui.github.io/R-KY/   # 截线上
  */
 import puppeteer from 'puppeteer-core';
 import { existsSync } from 'node:fs';
 
-const SECTIONS = process.argv.slice(2).filter(a => !a.startsWith('-'));
+const argv = process.argv.slice(2).filter(a => !a.startsWith('-'));
+const URL_BASE = argv.find(a => a.startsWith('http')) || 'http://127.0.0.1:4321/';
+const SECTIONS = argv.filter(a => !a.startsWith('http'));
 const LIST = SECTIONS.length ? SECTIONS : ['passions'];
+const IS_LIVE = URL_BASE.includes('github.io');
 
 const EDGE = [
   'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
@@ -34,7 +38,7 @@ for (const id of LIST) {
   for (const vp of VIEWPORTS) {
     const page = await browser.newPage();
     await page.setViewport({ width: vp.width, height: vp.height, deviceScaleFactor: vp.dsf });
-    await page.goto('http://127.0.0.1:4321/', { waitUntil: 'networkidle0', timeout: 60000 });
+    await page.goto(URL_BASE, { waitUntil: 'networkidle0', timeout: 60000 });
     await new Promise(r => setTimeout(r, 2600));
 
     const exists = await page.evaluate(s => !!document.querySelector(s), `#${id}`);
@@ -70,7 +74,7 @@ for (const id of LIST) {
       return { x: 0, y: Math.round(r.top + scrollY), width: Math.round(r.width), height: Math.round(r.height) };
     }, `#${id}`);
 
-    const out = `tools/shots/sec-${id}-${vp.suffix}.png`;
+    const out = `tools/shots/sec-${id}-${vp.suffix}${IS_LIVE ? '-live' : ''}.png`;
     await page.screenshot({ path: out, clip: box, captureBeyondViewport: true });
     console.log(`✓ ${out}  ${box.width}x${box.height}`);
     await page.close();

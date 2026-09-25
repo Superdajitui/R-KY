@@ -15,6 +15,7 @@
  */
 import { mkdir, rm, cp, writeFile, readFile, readdir, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -90,6 +91,32 @@ await writeFile(path.join(DIST, '.nojekyll'), '');
 // 注入站点根路径后就都指向正确位置了。
 const urlPath = new URL(BASE).pathname.replace(/\/?$/, '/');
 
+// ---- CSS / JS 加内容指纹 ----
+//
+// 为什么必须做：GitHub Pages 给静态资源的缓存是 max-age=600，
+// 手机浏览器还会更激进地复用。结果是"我改了、也部署了，用户却还看到旧的"——
+// 这次就真实发生过：窄屏顺序已经改成文字在上，用户手机上仍是旧的，
+// 只能靠手动清缓存才能看到。加个 ?v=<内容哈希>，内容一变 URL 就变，
+// 浏览器自然拿新的，不用再教用户"强制刷新"。
+async function hashOf(rel) {
+  const p = path.join(DIST, rel);
+  if (!existsSync(p)) return null;
+  const buf = await readFile(p);
+  return createHash('sha1').update(buf).digest('hex').slice(0, 8);
+}
+
+const CSS_V = await hashOf('assets/css/style.css');
+const JS_V = await hashOf('assets/js/main.js');
+// 算不出指纹就说明产物缺文件 —— 这时如果只是"跳过替换"，
+// 页面会引用无指纹的旧地址，用户又看到旧样式，而且构建还是绿的。
+// 这种静默降级正是缓存问题复发的方式，所以直接报错。
+if (!CSS_V || !JS_V) {
+  console.error(`\n✗ 无法为静态资源生成指纹（style.css=${CSS_V} main.js=${JS_V}）`);
+  console.error('  产物里缺少 CSS 或 JS，构建结果不可信。\n');
+  process.exit(1);
+}
+console.log(`  指纹: style.css?v=${CSS_V}  main.js?v=${JS_V}`);
+
 for (const file of ['index.html', '404.html']) {
   const p = path.join(DIST, file);
   if (!existsSync(p)) continue;
@@ -99,6 +126,9 @@ for (const file of ['index.html', '404.html']) {
     .replace(/(content=")assets\/img\/og\.jpg(")/g, `$1${BASE}/assets/img/og.jpg$2`)
     .replace('</head>', `<link rel="canonical" href="${BASE}/">\n`
       + `<meta property="og:url" content="${BASE}/">\n</head>`);
+
+  if (CSS_V) html = html.replaceAll('assets/css/style.css', `assets/css/style.css?v=${CSS_V}`);
+  if (JS_V) html = html.replaceAll('assets/js/main.js', `assets/js/main.js?v=${JS_V}`);
 
   if (file === '404.html') {
     html = html.replace('<!--BUILD:BASE-->', `<base href="${urlPath}">`);
