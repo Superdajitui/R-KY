@@ -20,8 +20,8 @@
  */
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { FILES, EXTRA, collect, stripComments } from './lib-chars.mjs';
 
-const FILES = ['index.html', '404.html', 'assets/js/main.js'];
 const CHARSET = 'tools/charset.txt';
 const FONT = 'assets/fonts/noto-sans-sc-subset.woff2';
 
@@ -30,24 +30,14 @@ if (!existsSync(CHARSET) || !existsSync(FONT)) {
   process.exit(2);
 }
 
-const isCJK = (c) => {
-  const p = c.codePointAt(0);
-  return (p >= 0x4e00 && p <= 0x9fff)      // 基本汉字
-      || (p >= 0x3400 && p <= 0x4dbf)      // 扩展 A
-      || (p >= 0xf900 && p <= 0xfaff)      // 兼容汉字
-      || (p >= 0x3000 && p <= 0x303f)      // 中日韩标点
-      || (p >= 0xff00 && p <= 0xffef);     // 全角字符
-};
-// 排版高频但码位不在 CJK 区间的标点，extract-chars 也会打进子集
-const EXTRA = '·—–…“”‘’「」《》';
-
+// 必须和 extract-chars.mjs 用同一套规则（含剥注释），否则会报出假缺口。
+// 这里的「页面用到哪些字」只作参考；真正的把关是 check-dom-chars.mjs。
 let pageText = '';
 for (const f of FILES) {
   if (!existsSync(f)) continue;
-  pageText += await readFile(f, 'utf8');
+  pageText += stripComments(await readFile(f, 'utf8'), f.endsWith('.js'));
 }
-const pageChars = new Set([...pageText].filter(isCJK));
-for (const c of EXTRA) if (pageText.includes(c)) pageChars.add(c);
+const pageChars = collect(pageText, new Set());
 
 const charset = await readFile(CHARSET, 'utf8');
 const fontChars = new Set([...charset]);

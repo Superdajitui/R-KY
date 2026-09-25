@@ -22,10 +22,14 @@
     "preview": "node tools/preview.mjs",
     "test:welcome": "node tools/test-welcome.mjs",
     "test:font": "node tools/check-font-coverage.mjs",
+    "test:dom": "node tools/check-dom-chars.mjs",
     "font:chars": "node tools/extract-chars.mjs",
     "font:build": "node tools/build-cjk-font.mjs",
     "test:collar": "node tools/check-name-collar.mjs",
-    "collar": "node tools/find-collar.mjs"
+    "collar": "node tools/find-collar.mjs",
+    "font:symbol": "node tools/build-symbol-font.mjs",
+    "stats": "node tools/measure-stats-ink.mjs",
+    "stats:box": "node tools/measure-stats.mjs"
   },
   "devDependencies": {
     "@fontsource/anton": "^5.3.0",

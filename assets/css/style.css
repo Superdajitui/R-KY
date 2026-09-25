@@ -27,6 +27,20 @@
   font-display:swap;
 }
 
+/* 星座符号：自己托管，保证各设备一致。
+   ♑（U+2651）同时存在「文字」和「emoji」两种呈现 ——
+   电脑上走 Segoe UI Symbol 是单色线条，安卓上却常落到彩色 emoji 字体，
+   渲染成紫底图案。光加变体选择符 VS15 不够保险（系统若没有收录该字形的
+   单色字体，浏览器还是会退回 emoji），自己托管才彻底。
+   12 个星座一共 2.1 KB。 */
+@font-face{
+  font-family:'Zodiac Symbols';
+  src:url('../fonts/zodiac-symbols.woff2') format('woff2');
+  font-weight:400;
+  font-style:normal;
+  font-display:swap;
+}
+
 /* ---------- 设计令牌 ---------- */
 :root{
   --ink:#111112;          /* 绝对黑，整个站的底色 */
@@ -38,7 +52,9 @@
   --mute:#8a8d92;
   --mute-2:#5c5f64;
 
-  --f-display:'Anton','Inter',system-ui,sans-serif;
+  /* 显示字体：Anton 只有拉丁字母和数字，汉字要靠 Noto Sans SC 兜底。
+     不写进去的话「江苏无锡」会掉到系统字体，和别处的中文对不上。 */
+  --f-display:'Anton','Inter','Noto Sans SC',system-ui,sans-serif;
   /* 中文字体放在 Inter 之后：拉丁字母用 Inter，汉字落到 Noto Sans SC。
      后面的系统字体只是兜底 —— 子集里没有的生僻字会走它们，
      总比显示成方框好。 */
@@ -536,18 +552,45 @@ section{position:relative;scroll-margin-top:84px}
 .stat__num{
   font-family:var(--f-display);line-height:.9;
   font-size:clamp(2.6rem,7vw,5rem);color:var(--paper);
-  display:flex;align-items:baseline;gap:.15rem;
+  display:flex;align-items:flex-end;gap:.15rem;
+  /* 四格用了四种字号（数字 80px / 字母 62px / 符号 66px / 汉字 60px），
+     高度不同 → 下面的标签起始位置就参差不齐（实测差 23px）。
+     给它一个统一的最小高度，标签这一行就对齐了。
+     对齐用 flex-end（盒子底边）：数字和字母两格实测墨迹底正好落在同一条线上，
+     剩下的汉字、符号再各自做一点光学修正（见下面两条）。
+     试过 align-items:baseline，反而更乱：浏览器按各字体的 ascent/descent 分配
+     空间后，四格墨迹底差了 17.5px，还让字形溢出盒子上沿。
+     现在四套字体都是自托管的，度量固定，所以光学修正量是确定值，不是碰运气。 */
+  min-height:clamp(2.5rem,6.8vw,4.9rem);
 }
-.stat__num small{font-size:.32em;color:var(--neon)}
+.stat__num small{font-size:.32em;color:var(--neon);line-height:1}
 /* ISTJ 这类字母，和 ♑ 这类符号：Anton 里没有对应字形，会回退到系统字体，
    字号得单独压一点，否则视觉重量和数字对不上 */
 .stat__num--word{font-size:clamp(2.1rem,5.4vw,3.9rem);letter-spacing:.02em}
-/* 汉字比拉丁字母宽一倍，4 个汉字（江苏无锡）会撑破格子，单独收一档。
-   上限是按最窄桌面（821px）反推的：格子内容宽约 147px，4 字需 ≤36.8px。 */
-.stat__num--cn{font-size:clamp(1.6rem,3.8vw,3.8rem);letter-spacing:.01em}
+/* 汉字比拉丁字母宽一倍，4 个汉字（江苏无锡）会撑破格子，得单独定量。
+   上限按最窄桌面（821px，格子内容宽约 147px）反推：4 字需 ≤36.8px。
+   4.2vw 在 1440 下约 60px，和 ISTJ 的 62px 基本齐平，视觉重量才一致。 */
+.stat__num--cn{
+  font-size:clamp(1.6rem,4.2vw,3.9rem);
+  letter-spacing:.01em;
+  font-weight:900;        /* 汉字要走 Noto Sans SC 的 900，才有分量 */
+  /* 思源黑体的 descent 比 Anton 大，盒子底边对齐后汉字墨迹还低 5.5px。
+     往上提 0.091em（在 60.5px 下正好 5.5px）就落在同一条基线上。
+     用 em 而不是 px：字号随视口变，修正量要跟着一起缩。 */
+  transform:translateY(-.091em);
+}
 .stat__num--sym{
-  font-family:'Segoe UI Symbol','Apple Symbols','Noto Sans Symbols',var(--f-body);
+  /* 自托管字体排在最前，保证各设备拿到同一个单色字形 */
+  font-family:'Zodiac Symbols','Segoe UI Symbol','Apple Symbols','Noto Sans Symbols',var(--f-body);
   font-weight:400;
+  /* 星座符号的字身留白比数字小得多：同样 80px，数字墨迹高 55~58px，
+     这颗符号却有 68.5px，摆在旁边明显偏大。
+     按墨迹高实测反推 ×0.83（68.5 → 57px），视觉重量才和邻居一致。
+     用 calc 挂在基准字号上，改基准时符号自动跟着走。 */
+  font-size:calc(clamp(2.6rem,7vw,5rem) * .83);
+  /* 符号字身的 descent 更大，盒子底边对齐后墨迹还低 13.4px（66.4px 下）。
+     同样按 em 提上去，和汉字的修正逻辑一致。 */
+  transform:translateY(-.202em);
 }
 .stat:hover .stat__num{color:var(--neon)}
 .stat__num{transition:color .4s}
