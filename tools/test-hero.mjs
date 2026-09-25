@@ -132,6 +132,57 @@ console.log(`  源图脸颊 RGB: ${srcRGB.map(v => v.toFixed(0)).join(' / ')}`);
 console.log(`  页面脸颊 RGB: ${pageRGB.map(v => v.toFixed(0)).join(' / ')}`);
 check(maxDiff < 14, '脸部颜色与源图一致（光晕没有糊到脸上）', `最大偏差 ${maxDiff.toFixed(1)}`);
 check(greenShift < 8, '没有额外的绿色偏移', `绿增益 ${greenShift.toFixed(1)}`);
+
+/* ---- 任恺昱的镂空是否「干净」----
+   干净镂空 = 描边 + 一层同字填充盖住笔画内部。
+   填 transparent 的话，思源黑体是重叠笔画拼合的，字内部会全是交叉线。
+   这里既查结构（填充层在不在、填色对不对），也数像素（霓虹占比）。 */
+console.log('');
+const outline = await page.evaluate(() => {
+  const el = document.querySelector('.hero__cn');
+  const cs = getComputedStyle(el);
+  const af = getComputedStyle(el, '::after');
+  const r = el.getBoundingClientRect();
+  return {
+    strokeWidth: cs.webkitTextStrokeWidth,
+    strokeColor: cs.webkitTextStrokeColor,
+    baseColor: cs.color,
+    fillContent: af.content,
+    fillColor: af.color,
+    shirt: cs.getPropertyValue('--shirt').trim(),
+    box: { x: r.left, y: r.top + window.scrollY, w: r.width, h: r.height },
+  };
+});
+
+console.log(`  描边 ${outline.strokeWidth} ${outline.strokeColor}`);
+console.log(`  填充层 ::after  content=${outline.fillContent}  color=${outline.fillColor}`);
+console.log(`  --shirt = ${outline.shirt}`);
+
+check(outline.fillContent !== 'none', '填充层存在（否则内部会露出交叉线）');
+check(/rgba?\([^)]*,\s*0\)/.test(outline.baseColor), '底层文字填透明，只留描边');
+check(outline.strokeColor.includes('210, 255, 0'), '描边是霓虹绿', outline.strokeColor);
+check(outline.fillColor.replace(/\s/g, '') === outline.shirt.replace(/\s/g, ''),
+  '填充色与 T 恤实测色一致', `${outline.fillColor} vs ${outline.shirt}`);
+
+// 数像素：霓虹占比过低=描边没画出来，过高=内部交叉线露出来了
+const nameShot = await page.screenshot({
+  clip: {
+    x: Math.max(0, Math.round(outline.box.x)),
+    y: Math.max(0, Math.round(outline.box.y)),
+    width: Math.round(outline.box.w),
+    height: Math.round(outline.box.h),
+  },
+});
+const raw = await sharp(nameShot).raw().toBuffer({ resolveWithObject: true });
+let neon = 0;
+const total = raw.info.width * raw.info.height;
+for (let i = 0; i < raw.data.length; i += raw.info.channels) {
+  if (raw.data[i] > 150 && raw.data[i + 1] > 190 && raw.data[i + 2] < 130) neon++;
+}
+const neonPct = neon / total * 100;
+console.log(`  名字区域霓虹占比: ${neonPct.toFixed(2)}%`);
+check(neonPct > 4, '描边确实渲染出来了', `${neonPct.toFixed(2)}%`);
+check(neonPct < 20, '内部没有多余的交叉线', `${neonPct.toFixed(2)}%`);
 await page.close();
 
 /* ═══════════ 移动端 ═══════════ */

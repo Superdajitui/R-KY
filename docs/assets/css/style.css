@@ -405,14 +405,36 @@ main{position:relative;z-index:2;background:var(--ink)}
   font-size:max(2rem, min(calc(21.2svh - 44px), 174px));
   line-height:1;
 }
+/* 任恺昱：干净的镂空描边，压在人物之前、叠在深色 T 恤上。
+   ------------------------------------------------------------
+   做法和开场页那行一样：描边 + 一层同字填充盖住内半部分。
+   填 transparent（常规写法）的话，思源黑体是由重叠笔画拼合的，
+   每个笔画的轮廓都会画出来，字内部全是交叉线。
+
+   这里的难点是填充色 —— 底是照片不是纯色。好在加了衣领约束之后，
+   名字已经【完全落在 T 恤上】（tools/check-name-collar.mjs 守着这条），
+   而那块布料实测标准差只有 3~5（tools/sample-shirt.mjs），够均匀，
+   所以直接用取到的平均色填充，边界看不出来。
+
+   描边宽度写的是目标值的两倍：内半部分会被填充盖住。 */
 .hero__cn{
+  --shirt:rgb(42,46,49);        /* T 恤实测平均色，换照片要重新量 */
   font-family:var(--f-cn);font-weight:900;letter-spacing:.02em;
   color:transparent;
-  -webkit-text-stroke:2px var(--neon);text-stroke:2px var(--neon);
+  -webkit-text-stroke:4px var(--neon);
   display:inline-block;
+  position:relative;
+}
+.hero__cn::after{
+  content:attr(data-text);
+  position:absolute;left:0;top:0;
+  color:var(--shirt);
+  -webkit-text-stroke:0;
+  pointer-events:none;
 }
 @supports not ((-webkit-text-stroke:1px #000)){
   .hero__cn{color:var(--neon)}
+  .hero__cn::after{display:none}
 }
 
 /* --- 人物 ---
@@ -693,7 +715,9 @@ body.is-hero .hero__foot{opacity:0;animation:fadeUp .9s var(--ease) .7s forwards
   .hero__eyebrow{top:5.25rem;letter-spacing:.2em;font-size:.62rem}
   .hero__word--top{font-size:clamp(3.2rem,21vw,9rem)}
   .hero__word--bottom{font-size:clamp(2.4rem,16vw,7rem)}
-  .hero__cn{-webkit-text-stroke-width:1.5px}
+  /* 描边宽度是目标可见粗细的两倍（内半会被填充盖住），
+     手机目标 1.5px 所以写 3px */
+  .hero__cn{-webkit-text-stroke-width:3px}
   .hero__foot{flex-direction:column;align-items:center;text-align:center;gap:1rem;bottom:1.75rem}
   .hero__meta{flex-direction:column;gap:.8rem}
   .skills__list li{grid-template-columns:1fr;gap:.25rem}

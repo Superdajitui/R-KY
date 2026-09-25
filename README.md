@@ -418,9 +418,28 @@ node tools/build-cjk-font.mjs    # 按字符集生成子集 → assets/fonts/
 用 `em` 而不是 `px`：写死 px 的话，手机上 4px 配 47px 的字显得笨重，
 桌面上 4px 配 152px 又偏精致，同一个设计在两种尺寸下观感对不上。
 
-**这招只适用于纯色背景。** 首屏那个压在照片上的「任恺昱」不能这么干 ——
-填充会挡住照片和脖子，所以它仍然是 `color:transparent`，
-代价是字形内部保留线框感。这是刻意的取舍，不是 bug。
+**这招对首屏的「任恺昱」也适用** —— 关键是加了衣领约束之后，
+名字已经**完全落在 T 恤上**，不会盖到脖子或脸。
+T 恤那块布料实测标准差只有 3~5（`tools/sample-shirt.mjs`），够均匀，
+所以直接用取到的平均色 `rgb(42,46,49)` 填充，边界看不出来。
+
+```css
+.hero__cn{
+  --shirt:rgb(42,46,49);        /* T 恤实测平均色，换照片要重新量 */
+  color:transparent;
+  -webkit-text-stroke:4px var(--neon);   /* 外显 2px */
+}
+.hero__cn::after{
+  content:attr(data-text);
+  position:absolute;left:0;top:0;
+  color:var(--shirt);           /* 填衣服色，盖住内部交叉线 */
+  -webkit-text-stroke:0;
+}
+```
+
+`npm run test:hero` 里有 6 条检查盯着：填充层是否存在、填充色是否等于
+`--shirt`、描边颜色、以及**名字区域的实际霓虹占比**
+（过低 = 描边没画出来；过高 = 内部交叉线露出来了）。
 
 `npm run test:welcome` 里有 6 条检查盯着这块：描边宽度、描边颜色、
 填充层是否存在、以及**镂空区域的实际墨量**（只有描边 → 个位数百分比；
