@@ -661,6 +661,42 @@ section{position:relative;scroll-margin-top:84px}
 }
 .passion__text{font-size:.92rem;color:var(--mute);line-height:1.9;text-wrap:pretty}
 
+/* --- 热爱区的照片 ---
+   三张统一 4:5，列与列纵向错开：比例一致 + 纵向错落 = 有设计感；
+   比例再各不相同的话，叠加错开只会显得乱。 */
+.passion__figure{
+  position:relative;overflow:hidden;
+  aspect-ratio:4 / 5;
+  margin:.9rem 0 1.3rem;
+  background:var(--ink-2);
+  /* 悬停放大走这里，不和图片自身的滚动动画抢 transform */
+  transition:transform .7s var(--ease);
+}
+.passion__figure img{
+  display:block;width:100%;height:100%;object-fit:cover;
+  /* 进入时略微放大并下沉，滚到位正好归位 —— "落定"的手感。
+     位移 2% 小于放大出来的 3.5% 溢出量，所以永远不会露出画框边缘。 */
+  transform:translate3d(0,calc((1 - var(--p,0)) * 2%),0)
+            scale(calc(1 + (1 - var(--p,0)) * .07));
+}
+/* 只有一个像素级的细节：图片底下压一条霓虹细线，滚到位才铺满，
+   和技能进度条、卡片箭头的动效语言一致 */
+.passion__figure::after{
+  content:'';position:absolute;left:0;bottom:0;height:2px;
+  width:100%;background:var(--neon);
+  transform:scaleX(var(--p,0));transform-origin:left;
+}
+@media (hover:hover){
+  .passion:hover .passion__figure{transform:scale(1.015)}
+}
+/* 纵向错开：只在够宽的屏幕上开。窄屏是三栏堆叠，
+   错开只会让每块之间多出一段莫名其妙的空隙。 */
+@media (min-width:1001px){
+  .passions__grid{align-items:start}
+  .passion:nth-child(2){margin-top:2.75rem}
+  .passion:nth-child(3){margin-top:5.5rem}
+}
+
 /* ---------- 项目 ---------- */
 .work{padding:clamp(5rem,13vw,10rem) 0;border-bottom:1px solid var(--ink-3)}
 .cards{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--ink-3);border:1px solid var(--ink-3)}
@@ -953,6 +989,9 @@ html.js .contact__glow{
     opacity:1!important;transform:none!important;filter:none!important;
   }
   html.js .skills__list i{transform:scaleX(1)!important}
+  /* 热爱区的照片：直接显示在终态（原大小、细线铺满） */
+  html.js .passion__figure img{transform:none!important}
+  .passion__figure::after{transform:scaleX(1)!important}
 }
 
 /* ---------- 兜底：滚动动效初始化失败 ----------
@@ -971,3 +1010,5 @@ html.scrub-off .contact__glow{
   opacity:1!important;transform:none!important;filter:none!important;
 }
 html.scrub-off .skills__list i{transform:scaleX(1)!important}
+html.scrub-off .passion__figure img{transform:none!important}
+html.scrub-off .passion__figure::after{transform:scaleX(1)!important}

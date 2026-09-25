@@ -25,6 +25,7 @@
     "shoot:scroll": "node tools/shoot-scroll.mjs",
     "shoot:marquee": "node tools/shoot-marquee.mjs",
     "shoot:copy": "node tools/shoot-copy.mjs",
+    "prep:passions": "node tools/prep-passions.mjs",
     "test:font": "node tools/check-font-coverage.mjs",
     "test:dom": "node tools/check-dom-chars.mjs",
     "font:chars": "node tools/extract-chars.mjs",

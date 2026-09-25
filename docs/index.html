@@ -281,9 +281,24 @@
       <h2 class="sec__title" data-scrub="lines">赛道、取景框，<em>和一副耳机</em>。</h2>
 
       <div class="passions__grid">
-        <!-- 同 .cards：三栏在同一排，一律不加延迟，否则左右会有高度差 -->
+        <!-- 三栏各自带一张照片，列与列之间纵向错开（见 .passion:nth-child 的 margin），
+             三张统一裁成 4:5 —— 比例一致 + 纵向错落 才是"排版有设计感"；
+             三张各不相同的比例再叠加错开，看起来只会是乱。
+             错开的量是有意的设计，不是没对齐（并排同步那条检查只盯同一高度的元素）。 -->
         <article class="passion" data-scrub="rise">
           <span class="passion__idx">01</span>
+          <figure class="passion__figure">
+            <picture>
+              <!-- 用 srcset + sizes 让浏览器自己挑，而不是 media 切换：
+                   手机 2x 屏需要 ~720px，media 切换只会固定给 520（偏软）；
+                   srcset 下 2x 手机会拿 880、1x 桌面会拿 520，各取所需。 -->
+              <img src="assets/img/passion-photography-880.webp"
+                   srcset="assets/img/passion-photography-520.webp 520w, assets/img/passion-photography-880.webp 880w"
+                   sizes="(max-width:1000px) 92vw, 30vw"
+                   alt="一台尼康 Z fc 相机"
+                   width="880" height="1100" loading="lazy" decoding="async">
+            </picture>
+          </figure>
           <h3 class="passion__title">摄影</h3>
           <p class="passion__en">Photography</p>
           <p class="passion__text">
@@ -295,6 +310,15 @@
 
         <article class="passion" data-scrub="rise">
           <span class="passion__idx">02</span>
+          <figure class="passion__figure">
+            <picture>
+              <img src="assets/img/passion-motorsport-880.webp"
+                   srcset="assets/img/passion-motorsport-520.webp 520w, assets/img/passion-motorsport-880.webp 880w"
+                   sizes="(max-width:1000px) 92vw, 30vw"
+                   alt="穿着橙色赛服的 F1 车手走过赛道"
+                   width="880" height="1100" loading="lazy" decoding="async">
+            </picture>
+          </figure>
           <h3 class="passion__title">赛车</h3>
           <p class="passion__en">Motorsport</p>
           <p class="passion__text">
@@ -305,6 +329,15 @@
 
         <article class="passion" data-scrub="rise">
           <span class="passion__idx">03</span>
+          <figure class="passion__figure">
+            <picture>
+              <img src="assets/img/passion-music-880.webp"
+                   srcset="assets/img/passion-music-520.webp 520w, assets/img/passion-music-880.webp 880w"
+                   sizes="(max-width:1000px) 92vw, 30vw"
+                   alt="孙燕姿《未完成》专辑封面"
+                   width="880" height="1100" loading="lazy" decoding="async">
+            </picture>
+          </figure>
           <h3 class="passion__title">音乐</h3>
           <p class="passion__en">Music · 孙燕姿</p>
           <p class="passion__text">

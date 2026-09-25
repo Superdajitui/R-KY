@@ -326,7 +326,42 @@ console.log('\n════ 跑马灯：首尾相接、全程不露白 ═══
     `2 遍时最大露白 ${probe.worstGap.toFixed(0)}px`);
 }
 
-/* --- 断言 6：停下来之后 raf 循环要停 --- */
+/* --- 断言 7：热爱区三张照片真的加载出来且比例正确 --- */
+/*
+   图片坏掉是最容易被忽略的一类失败：布局还在、位置也对，
+   只是那块是空的，而本地开着缓存看首屏根本发现不了。
+   顺便验一下三张都是 4:5 —— 排版是靠"比例一致 + 纵向错落"成立的，
+   谁换了一张别的比例，构图就散了。
+*/
+{
+  const figs = await page.evaluate(async () => {
+    const box = document.querySelector('#passions');
+    box.scrollIntoView({ block: 'start', behavior: 'instant' });
+    await new Promise(r => setTimeout(r, 600));
+    return [...box.querySelectorAll('.passion__figure')].map(f => {
+      const img = f.querySelector('img');
+      const fr = f.getBoundingClientRect();
+      const ir = img.getBoundingClientRect();
+      return {
+        alt: img.alt,
+        loaded: img.complete && img.naturalWidth > 0,
+        src: (img.currentSrc || img.src).split('/').pop(),
+        boxRatio: +(fr.width / fr.height).toFixed(3),
+        // 图片铺满画框（object-fit:cover）时，渲染尺寸应当不小于画框
+        covers: ir.width >= fr.width - 1 && ir.height >= fr.height - 1,
+      };
+    });
+  });
+  const notLoaded = figs.filter(f => !f.loaded);
+  check(figs.length === 3, '热爱区有三张照片', `${figs.length} 张`);
+  check(notLoaded.length === 0, '三张照片都真的加载出来了',
+    notLoaded.length ? notLoaded.map(f => f.src).join(' ') : figs.map(f => f.src).join(' '));
+  check(figs.every(f => Math.abs(f.boxRatio - 0.8) < 0.01), '三张画框都是 4:5（构图靠比例一致）',
+    figs.map(f => f.boxRatio).join(' / '));
+  check(figs.every(f => f.covers), '图片铺满画框（没有留白或变形）');
+}
+
+/* --- 断言 8：停下来之后 raf 循环要停 --- */
 await sleep(1400);
 const settle = await page.evaluate(() => document.querySelector('.marquee__track').style.transform);
 check(!settle || settle === 'none', '滚动结束后脚本没有残留内联位移', settle || 'none');
@@ -411,10 +446,16 @@ const mob = await mp.evaluate(() => {
     .filter(el => !/matrix\(1, 0, 0, 1, 0, 0\)/.test(getComputedStyle(el).transform)).length;
   const lines = [...document.querySelectorAll('.ln__in')]
     .filter(el => !/matrix\(1, 0, 0, 1, 0, 0\)|none/.test(getComputedStyle(el).transform)).length;
-  return { bad, bars, lines };
+  // srcset 有没有真的起作用：2x 手机应当拿到 880 那档，而不是固定给 520
+  const passionSrc = [...document.querySelectorAll('#passions img')]
+    .map(i => (i.currentSrc || i.src).split('/').pop());
+  return { bad, bars, lines, passionSrc };
 });
 check(mob.bad.length === 0, '手机上滚到底也没有内容被藏住',
   mob.bad.length ? [...new Set(mob.bad)].join(' ') : '全部可见');
+check(mob.passionSrc.every(s => s.includes('-880.')),
+  '2x 手机上照片取用了 880 那档（srcset 生效）',
+  mob.passionSrc.join(' '));
 check(mob.bars === 0 && mob.lines === 0, '手机上进度条与标题都到位',
   `条 ${mob.bars} / 行 ${mob.lines}`);
 await mp.close();
