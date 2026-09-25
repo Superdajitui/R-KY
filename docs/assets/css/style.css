@@ -683,9 +683,14 @@ section{position:relative;scroll-margin-top:84px}
 .skills__list span{font-size:.84rem;color:var(--mute)}
 .skills__list i{
   position:absolute;left:0;bottom:-1px;height:1px;width:var(--lv);
-  background:var(--neon);transform:scaleX(0);transform-origin:left;
-  transition:transform 1s var(--ease);
+  background:var(--neon);transform-origin:left;
 }
+/* 进度条【刻意不做】滚动驱动，只在进入视口时一次性铺到 --lv。
+   试过接进 scrub（scaleX 跟着 --p 走），看着很"苹果"，
+   但它会篡改数据：停在半路时 Python 显示 39%，而 --lv 是 78%。
+   进度条是有含义的数值，不是装饰 —— 数值不能由滚动位置决定。
+   收起状态挂在 html.js 下：无脚本时没有动画，但条子必须是满的。 */
+html.js .skills__list i{transform:scaleX(0);transition:transform 1s var(--ease)}
 html.js .skills__list li.is-in i{transform:scaleX(1)}
 
 /* ---------- 联系 ---------- */
@@ -739,6 +744,94 @@ body.is-hero .hero__foot{opacity:0;animation:fadeUp .9s var(--ease) .7s forwards
 @keyframes fadeUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
 @keyframes nameIn{from{opacity:0;transform:translateY(38px) scale(.96)}to{opacity:1;transform:none}}
 @keyframes portraitIn{from{opacity:0;transform:translateY(46px) scale(.97)}to{opacity:1;transform:none}}
+
+/* ============================================================
+   滚动驱动动效（scrub）
+   ------------------------------------------------------------
+   和上面 [data-reveal] 的分工：
+     [data-reveal] = 进视口 → 播一次，是个开关；
+     scrub         = 动画进度 = 滚动进度，由 main.js 把 0~1 写进 --p。
+   苹果官网那种"被滚动驱动"的手感来自后者：可以往回擦、可以停在中间。
+
+   三条纪律：
+   1. 只碰 transform / opacity / filter —— 不触发重排，滚动才不掉帧；
+   2. 初始隐藏状态一律挂在 html.js 下，脚本没跑就完全不隐藏（渐进增强）；
+   3. 脚本一旦抛错，main.js 会给 <html> 加 .scrub-off（见文件末尾），
+      所有动效立即让位给静态内容 —— 动画可以坏，内容不可以看不见。
+   ============================================================ */
+
+/* 预设 1：浮起淡入。卡片、段落这类块级内容 */
+html.js [data-scrub="rise"]{
+  opacity:var(--p,0);
+  transform:translate3d(0,calc((1 - var(--p,0)) * 44px),0);
+}
+/* 预设 2：带一点模糊，像镜头对上焦。只给大标题用 ——
+   模糊很贵，铺到几十个元素上会明显掉帧 */
+html.js [data-scrub="blur"]{
+  opacity:var(--p,0);
+  transform:translate3d(0,calc((1 - var(--p,0)) * 30px),0);
+  filter:blur(calc((1 - var(--p,0)) * 6px));
+}
+/* 动画走完就把模糊摘掉，否则每一帧都要过一遍滤镜 */
+html.js [data-scrub="blur"].is-done{filter:none}
+/* 预设 3：段落逐段点亮。
+   刻意不做成 0 透明 —— "读过的段落暗下去"会让人以为内容没加载出来，
+   而且中文小字在低透明度下几乎不可读 */
+html.js [data-scrub="read"]{
+  opacity:calc(.26 + .74 * var(--p,0));
+}
+
+/* --- 大标题逐行揭示 ---
+   行结构由 main.js 按 <br> 拆出来（中文没有词间空格，只能按行拆）。
+   padding + 负 margin：给裁切框上下各留一点余量，
+   否则 line-height 1.18 会把汉字的上下缘切掉；
+   负 margin 再把多出来的高度收回去，版面和加动画之前完全一致。 */
+.sec__title .ln,.contact__big .ln{
+  display:block;overflow:hidden;
+  padding-block:.14em;margin-block:-.14em;
+}
+.sec__title .ln__in,.contact__big .ln__in{display:block}
+html.js .sec__title .ln__in,
+html.js .contact__big .ln__in{
+  transform:translateY(calc((1 - var(--p,0)) * 112%));
+}
+
+/* --- 首屏退场 ---
+   滚过首屏时：KERRY 向上、任恺昱向下（名字被"拉开"），
+   人物后缩、光晕收掉，整块像被推远。
+   这些元素的位置是用独立的 translate 属性做居中的（见 .hero__word 注释），
+   transform 是空着的，所以这里放心用 transform，两者不打架。 */
+html.js .hero__stage{
+  transform:scale(calc(1 - .045 * var(--hero-p,0)));
+  opacity:calc(1 - .9 * var(--hero-p,0));
+}
+html.js .hero__word--top{transform:translate3d(0,calc(var(--hero-p,0) * -54px),0)}
+html.js .hero__word--bottom{transform:translate3d(0,calc(var(--hero-p,0) * 46px),0)}
+html.js .hero__portrait{
+  transform:translate3d(0,calc(var(--hero-p,0) * 30px),0)
+            scale(calc(1 - .05 * var(--hero-p,0)));
+}
+html.js .hero__glow{opacity:calc(1 - .85 * var(--hero-p,0))}
+
+/* --- 关于：左栏钉住，右栏滚过去 ---
+   苹果那种"左边论点不动、右边论据一段段走过去"的叙事节奏。
+   只在够宽的屏幕上开：窄屏是单栏堆叠，钉住反而会盖住后面的内容。 */
+@media (min-width:1001px){
+  .about__wrap{align-items:start}
+  .about__left{position:sticky;top:16vh}
+}
+
+/* --- 跑马灯：滚动越快跑得越"用力" ---
+   基础位移仍然交给 CSS 动画（合成器跑，几乎不耗 CPU），
+   这里只在外面套一层，叠上跟滚动速度挂钩的偏移和轻微斜切，
+   松手后由 main.js 衰减回 0。 */
+.marquee__inner{transform:translate3d(0,0,0);will-change:transform}
+
+/* --- 联系：光晕随滚动涨起来 --- */
+html.js .contact__glow{
+  opacity:calc(.3 + .7 * var(--p,0));
+  transform:scale(calc(.82 + .18 * var(--p,0)));
+}
 
 /* ============================================================
    响应式
@@ -805,4 +898,37 @@ body.is-hero .hero__foot{opacity:0;animation:fadeUp .9s var(--ease) .7s forwards
   /* 欢迎页的文字揭示也一并跳过，直接显示 */
   .welcome__top,.welcome__label,.welcome__foot{opacity:1}
   .welcome__line > span{transform:none}
+
+  /* 滚动动效全部让位：一律显示在终态。
+     main.js 在 reduce 下也会把 --p 直接写成 1（双保险）：
+     两条路只要有一条生效，内容就不会停在透明状态。 */
+  html.js [data-scrub],
+  html.js .sec__title .ln__in,
+  html.js .contact__big .ln__in,
+  html.js .hero__stage,
+  html.js .hero__word--top,
+  html.js .hero__word--bottom,
+  html.js .hero__portrait,
+  html.js .hero__glow,
+  html.js .contact__glow{
+    opacity:1!important;transform:none!important;filter:none!important;
+  }
+  html.js .skills__list i{transform:scaleX(1)!important}
 }
+
+/* ---------- 兜底：滚动动效初始化失败 ----------
+   main.js 的装配过程包在 try 里，出错就加 .scrub-off。
+   这条规则必须放在最后，优先级也要够，才能压住上面所有动效声明。
+   宁可没有动画，也不能让人看到一片空白。 */
+html.scrub-off [data-scrub],
+html.scrub-off .sec__title .ln__in,
+html.scrub-off .contact__big .ln__in,
+html.scrub-off .hero__stage,
+html.scrub-off .hero__word--top,
+html.scrub-off .hero__word--bottom,
+html.scrub-off .hero__portrait,
+html.scrub-off .hero__glow,
+html.scrub-off .contact__glow{
+  opacity:1!important;transform:none!important;filter:none!important;
+}
+html.scrub-off .skills__list i{transform:scaleX(1)!important}

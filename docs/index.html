@@ -145,14 +145,14 @@
       </p>
 
       <h1 class="hero__title">
-        <span class="hero__word hero__word--top" data-parallax="-0.06">KERRY</span>
+        <span class="hero__word hero__word--top">KERRY</span>
 
-        <span class="hero__word hero__word--bottom" data-parallax="0.05">
+        <span class="hero__word hero__word--bottom">
           <span class="hero__cn" data-text="任恺昱">任恺昱</span>
         </span>
       </h1>
 
-      <div class="hero__portrait" data-parallax="0.02">
+      <div class="hero__portrait">
         <div class="hero__halo" aria-hidden="true"></div>
         <picture>
           <source media="(max-width:820px)" srcset="assets/img/hero-composite-900.webp" type="image/webp">
@@ -181,9 +181,13 @@
 
   <!-- ══════════ 跑马灯 ══════════ -->
   <div class="marquee" aria-hidden="true">
-    <div class="marquee__track">
-      <span>学生 <b>✦</b> 开发者 <b>✦</b> 创作者 <b>✦</b> STUDENT <b>✦</b> DEVELOPER <b>✦</b> CREATOR <b>✦</b> </span>
-      <span>学生 <b>✦</b> 开发者 <b>✦</b> 创作者 <b>✦</b> STUDENT <b>✦</b> DEVELOPER <b>✦</b> CREATOR <b>✦</b> </span>
+    <!-- 外层只负责"跟滚动速度挂钩的偏移和斜切"（main.js 写 transform），
+         内层保持原来的 CSS 匀速动画。两层分开，互不覆盖。 -->
+    <div class="marquee__inner">
+      <div class="marquee__track">
+        <span>学生 <b>✦</b> 开发者 <b>✦</b> 创作者 <b>✦</b> STUDENT <b>✦</b> DEVELOPER <b>✦</b> CREATOR <b>✦</b> </span>
+        <span>学生 <b>✦</b> 开发者 <b>✦</b> 创作者 <b>✦</b> STUDENT <b>✦</b> DEVELOPER <b>✦</b> CREATOR <b>✦</b> </span>
+      </div>
     </div>
   </div>
 
@@ -218,26 +222,26 @@
     <div class="wrap about__wrap">
       <div class="about__left">
         <p class="sec__label" data-reveal><i>02</i> 关于我 / ABOUT</p>
-        <h2 class="sec__title" data-reveal>
+        <h2 class="sec__title" data-scrub="lines">
           白天拆解<em>系统</em>，<br>夜里搭建<em>系统</em>。
         </h2>
       </div>
 
       <div class="about__right">
-        <p data-reveal>
+        <p data-scrub="read">
           我生于 2006 年 1 月，摩羯座 —— 冬天里最后一段，也是最沉得住气的一段。
           土象星座的耐心，加上 ISTJ 那种近乎固执的条理，构成了我做事的基本方式：
           不太相信灵光一现，更相信把一件事拆成步骤，然后一格一格走完。
         </p>
-        <p data-reveal>
+        <p data-scrub="read">
           我是学生，也是开发者和创作者。喜欢把抽象的想法变成真的能跑起来的东西
           —— 从 MATLAB 的一个仿真模型，到一个可以点击的界面。
         </p>
-        <p data-reveal>
+        <p data-scrub="read">
           我相信好的工程和好的设计其实是同一种手艺：克制、准确、恰到好处。
           多余的东西不是风格，是噪音。
         </p>
-        <p class="about__en" data-reveal>
+        <p class="about__en" data-scrub="read">
           Born in January 2006 — Capricorn, the most patient stretch of winter.
           Add an ISTJ's stubborn tidiness, and you get the way I work: I don't
           trust flashes of inspiration, I trust breaking a thing into steps and
@@ -246,7 +250,7 @@
           restrained, precise, deliberate.
         </p>
 
-        <ul class="about__facts" data-reveal>
+        <ul class="about__facts" data-scrub="rise">
           <li><b>出生</b> 2006.01 · 摩羯座</li>
           <li><b>人格</b> ISTJ · 内倾 · 实感 · 思考 · 判断</li>
           <li><b>方向</b> 电气 / 自动化 · 仿真与控制</li>
@@ -261,10 +265,10 @@
   <section class="passions" id="passions">
     <div class="wrap">
       <p class="sec__label" data-reveal><i>03</i> 热爱 / PASSIONS</p>
-      <h2 class="sec__title" data-reveal>赛道、取景框，<em>和一副耳机</em>。</h2>
+      <h2 class="sec__title" data-scrub="lines">赛道、取景框，<em>和一副耳机</em>。</h2>
 
       <div class="passions__grid">
-        <article class="passion" data-reveal>
+        <article class="passion" data-scrub="rise">
           <span class="passion__idx">01</span>
           <h3 class="passion__title">摄影</h3>
           <p class="passion__en">Photography</p>
@@ -275,7 +279,7 @@
           </p>
         </article>
 
-        <article class="passion" data-reveal>
+        <article class="passion" data-scrub="rise" data-scrub-delay="0.06">
           <span class="passion__idx">02</span>
           <h3 class="passion__title">赛车</h3>
           <p class="passion__en">Motorsport</p>
@@ -285,7 +289,7 @@
           </p>
         </article>
 
-        <article class="passion" data-reveal>
+        <article class="passion" data-scrub="rise" data-scrub-delay="0.12">
           <span class="passion__idx">03</span>
           <h3 class="passion__title">音乐</h3>
           <p class="passion__en">Music · 孙燕姿</p>
@@ -303,10 +307,10 @@
   <section class="work" id="work">
     <div class="wrap">
       <p class="sec__label" data-reveal><i>04</i> 项目 / SELECTED WORK</p>
-      <h2 class="sec__title" data-reveal>作品，与<em>练习</em>。</h2>
+      <h2 class="sec__title" data-scrub="lines">作品，与<em>练习</em>。</h2>
 
       <div class="cards">
-        <a class="card" href="#" data-cursor="lg" data-reveal>
+        <a class="card" href="#" data-cursor="lg" data-scrub="rise">
           <span class="card__idx">01</span>
           <h3 class="card__title">省创仿真平台</h3>
           <p class="card__desc">系统建模与仿真。把参数扫过一遍，让结果自己说话。</p>
@@ -314,7 +318,7 @@
           <span class="card__arrow">↗</span>
         </a>
 
-        <a class="card" href="#" data-cursor="lg" data-reveal>
+        <a class="card" href="#" data-cursor="lg" data-scrub="rise" data-scrub-delay="0.05">
           <span class="card__idx">02</span>
           <h3 class="card__title">个人网站 v1</h3>
           <p class="card__desc">你正在看的这一页。零框架、零依赖，每一处动效都手写而成。</p>
@@ -322,7 +326,7 @@
           <span class="card__arrow">↗</span>
         </a>
 
-        <a class="card" href="#" data-cursor="lg" data-reveal>
+        <a class="card" href="#" data-cursor="lg" data-scrub="rise" data-scrub-delay="0.1">
           <span class="card__idx">03</span>
           <h3 class="card__title">课程设计合集</h3>
           <p class="card__desc">从链表到图，把数据结构一个个亲手实现。基本功没有捷径。</p>
@@ -330,7 +334,7 @@
           <span class="card__arrow">↗</span>
         </a>
 
-        <a class="card" href="#" data-cursor="lg" data-reveal>
+        <a class="card" href="#" data-cursor="lg" data-scrub="rise" data-scrub-delay="0.15">
           <span class="card__idx">04</span>
           <h3 class="card__title">PS / ACR 调色修图</h3>
           <p class="card__desc">从 RAW 到成片。白平衡、曲线、局部蒙版 —— 调色是重新分配光。</p>
@@ -345,7 +349,7 @@
   <section class="skills" id="skills">
     <div class="wrap">
       <p class="sec__label" data-reveal><i>05</i> 技能 / TOOLKIT</p>
-      <h2 class="sec__title" data-reveal>手上的<em>工具箱</em>。</h2>
+      <h2 class="sec__title" data-scrub="lines">手上的<em>工具箱</em>。</h2>
 
       <ul class="skills__list">
         <li data-reveal><b>MATLAB / Simulink</b><span>建模 · 仿真 · 数据分析</span><i style="--lv:88%"></i></li>
@@ -360,20 +364,23 @@
   </section>
 
   <!-- ══════════ 联系 ══════════ -->
-  <section class="contact" id="contact">
+  <section class="contact" id="contact" data-scrub="drive">
+    <!-- 光晕不自己挂 data-scrub，而是继承 .contact 的 --p：
+         它是 absolute 定位在 60% 处的，用自己的位置算进度的话，
+         页面滚到底也只到 0.57，光晕永远涨不满。 -->
     <div class="contact__glow" aria-hidden="true"></div>
     <div class="wrap">
       <p class="sec__label" data-reveal><i>06</i> 联系 / CONTACT</p>
-      <h2 class="contact__big" data-reveal>一起做点<br><em>好玩的</em>东西？</h2>
+      <h2 class="contact__big" data-scrub="lines">一起做点<br><em>好玩的</em>东西？</h2>
 
-      <div class="contact__row" data-reveal>
+      <div class="contact__row" data-scrub="rise">
         <a class="btn btn--neon btn--big" href="mailto:superdajitui@outlook.com" data-cursor="lg">
           <span>superdajitui@outlook.com</span>
         </a>
         <a class="btn btn--ghost btn--big" href="#" data-cursor="lg"><span>GitHub ↗</span></a>
       </div>
 
-      <p class="contact__note" data-reveal>
+      <p class="contact__note" data-scrub="rise" data-scrub-delay="0.06">
         目前开放实习、合作与任何有趣的技术讨论。回信通常不超过 24 小时。
       </p>
     </div>

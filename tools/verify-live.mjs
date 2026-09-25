@@ -151,10 +151,51 @@ for (const sel of ['#stats', '#about', '#work', '#skills', '#contact']) {
   await page.evaluate(x => document.querySelector(x).scrollIntoView({ block: 'start', behavior: 'instant' }), sel);
   await sleep(700);
 }
-await sleep(1200);
+// 一定要真的滚到最底：滚动驱动动效的进度是按位置算的，
+// 只滚到 #contact 的开头，页面底部的元素还没走完自己的行程。
+await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+await sleep(1600);
+
 const hidden = await page.evaluate(() =>
   [...document.querySelectorAll('[data-reveal]')].filter(el => getComputedStyle(el).opacity !== '1').length);
 check(hidden === 0, '滚到底后所有板块均已显现', `未显现 ${hidden} 个`);
+
+// 滚动驱动动效（scrub）的元素是"默认透明、靠滚动点亮"的，
+// 一旦线上脚本出错或选择器失效，它们会静静地停在全透明，
+// 而 [data-reveal] 那一条完全查不出来。所以这里单独盯一遍。
+const scrubState = await page.evaluate(() => {
+  const bad = [];
+  for (const el of document.querySelectorAll('[data-scrub]')) {
+    if (+getComputedStyle(el).opacity < 0.99) bad.push(el.dataset.scrub);
+  }
+  const linesOff = [...document.querySelectorAll('.ln__in')]
+    .filter(el => !/matrix\(1, 0, 0, 1, 0, 0\)|none/.test(getComputedStyle(el).transform)).length;
+  return {
+    count: document.querySelectorAll('[data-scrub]').length,
+    lines: document.querySelectorAll('.ln__in').length,
+    off: document.documentElement.classList.contains('scrub-off'),
+    bad, linesOff,
+  };
+});
+check(!scrubState.off, '滚动动效初始化成功（没有走 .scrub-off 降级）');
+check(scrubState.count > 0, '页面存在滚动驱动动效', `${scrubState.count} 个元素 / ${scrubState.lines} 行标题`);
+check(scrubState.bad.length === 0, '滚到底后滚动动效没有把内容留在透明状态',
+  scrubState.bad.length ? [...new Set(scrubState.bad)].join(' ') : '全部可见');
+check(scrubState.linesOff === 0, '标题每一行都推到位', `${scrubState.linesOff} 行未到位`);
+
+// 首屏退场必须是可逆的：滚回顶部就该完全复原，
+// 否则用户往上滚会看到一张"回不来"的首屏。
+await page.evaluate(() => window.scrollTo(0, 0));
+await sleep(1600);
+const heroBack = await page.evaluate(() => {
+  const hero = document.querySelector('.hero');
+  return {
+    p: parseFloat(getComputedStyle(hero).getPropertyValue('--hero-p')) || 0,
+    op: +getComputedStyle(document.querySelector('.hero__stage')).opacity,
+  };
+});
+check(heroBack.p < 0.05 && heroBack.op > 0.99, '滚回顶部首屏完全复原',
+  `--hero-p=${heroBack.p.toFixed(3)} opacity=${heroBack.op.toFixed(2)}`);
 await page.close();
 
 /* ---------- 3. 404 页 ---------- */

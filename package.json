@@ -21,6 +21,8 @@
     "optimize": "node tools/optimize.mjs src/helmet-raw.webp src --name=helmet --sizes=800",
     "preview": "node tools/preview.mjs",
     "test:welcome": "node tools/test-welcome.mjs",
+    "test:scroll": "node tools/test-scroll.mjs",
+    "shoot:scroll": "node tools/shoot-scroll.mjs",
     "test:font": "node tools/check-font-coverage.mjs",
     "test:dom": "node tools/check-dom-chars.mjs",
     "font:chars": "node tools/extract-chars.mjs",
