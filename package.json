@@ -23,7 +23,9 @@
     "test:welcome": "node tools/test-welcome.mjs",
     "test:font": "node tools/check-font-weight.mjs",
     "font:chars": "node tools/extract-chars.mjs",
-    "font:build": "node tools/build-cjk-font.mjs"
+    "font:build": "node tools/build-cjk-font.mjs",
+    "test:collar": "node tools/check-name-collar.mjs",
+    "collar": "node tools/find-collar.mjs"
   },
   "devDependencies": {
     "@fontsource/anton": "^5.3.0",

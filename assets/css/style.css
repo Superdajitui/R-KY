@@ -54,7 +54,7 @@
      因为 svh 不被支持时会让整个 min() 失效，进而让 height 变成 auto，
      绝对定位的人物就会尺寸失控。 */
   --hero-name-top:15vh;
-  --hero-name-bottom:11vh;
+  --hero-name-bottom:28px;
   --hero-portrait-h:min(72vh,740px);
   --hero-portrait-bottom:0;
 }
@@ -63,7 +63,7 @@
 @supports (height:100svh){
   :root{
     --hero-name-top:15svh;
-    --hero-name-bottom:11svh;
+    --hero-name-bottom:28px;
     --hero-portrait-h:min(72svh,740px);
   }
 }
@@ -386,11 +386,23 @@ main{position:relative;z-index:2;background:var(--ink)}
   color:var(--paper);
   text-shadow:0 0 90px rgba(0,0,0,.6);
 }
-/* 任恺昱：压在人物之前，叠在深色T恤上 */
+/* 任恺昱：压在人物之前，叠在深色T恤上。
+   ------------------------------------------------------------
+   字号受【衣领】约束：人物图里衣领在 70.5% 处（tools/find-collar.mjs 量的），
+   所以胸口可用高度只有人物高度的 29.5%。
+
+   人物高度是 min(72svh, 740px)，于是胸口空间 = min(21.2svh, 218px)。
+   字号直接用这个式子推，并且和人物用同一套 svh ——
+   改用 vw 的话宽屏上名字会撑爆胸口；
+   只写 svh 也不行：人物高度一旦被 740px 封顶，视口再高胸口也不会变高，
+   字号却还在涨。这是实测（tools/check-name-collar.mjs）踩出来的。
+
+   44px = 顶部留白 16px + 底部留白 28px（略留余量给字形下沉）。 */
 .hero__word--bottom{
   bottom:var(--hero-name-bottom);
   z-index:3;
-  font-size:clamp(3.4rem,15.5vw,13rem);
+  font-size:max(2rem, min(calc(21.2vh - 44px), 174px));
+  font-size:max(2rem, min(calc(21.2svh - 44px), 174px));
   line-height:1;
 }
 .hero__cn{

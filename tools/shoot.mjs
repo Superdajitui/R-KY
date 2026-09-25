@@ -94,16 +94,19 @@ for (const sel of ['#passions', '#work']) {
 await mobile.close();
 
 /* ---------- 平板（横竖屏都测，断点在 820px）---------- */
-const tabletP = await newPage(820, 1180, 2);
-await shot(tabletP, 'tablet-portrait');
-await tabletP.close();
-
-const tabletL = await newPage(1180, 820, 2);
-await shot(tabletL, 'tablet-landscape');
-await tabletL.close();
+// 注意要先滚过开场页，否则拍到的是欢迎页而不是首屏
+for (const [w, h, tag] of [[820, 1180, 'portrait'], [1180, 820, 'landscape']]) {
+  const t = await newPage(w, h, 2);
+  await t.evaluate(() => window.scrollTo(0, innerHeight));
+  await sleep(1800);
+  await shot(t, `tablet-${tag}`);
+  await t.close();
+}
 
 /* ---------- 宽屏 ---------- */
 const wide = await newPage(1920, 1080);
+await wide.evaluate(() => window.scrollTo(0, innerHeight));
+await sleep(1800);
 await shot(wide, 'wide-hero');
 await wide.close();
 
