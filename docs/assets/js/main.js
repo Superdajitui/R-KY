@@ -53,6 +53,21 @@
   });
 
   /* ---------------------------------------------------------
+     2b. 年龄：从 data-birth 算，不写死
+        写死的话每年生日一过就过期了，而没人会记得回来改。
+     --------------------------------------------------------- */
+  $$('[data-birth]').forEach(el => {
+    const m = /^(\d{4})-(\d{2})$/.exec(el.dataset.birth);
+    if (!m) return;
+    const by = Number(m[1]), bm = Number(m[2]) - 1;   // 月份从 0 起
+    const now = new Date();
+    let age = now.getFullYear() - by;
+    if (now.getMonth() < bm) age--;                   // 今年生日还没到
+    el.dataset.count = String(age);
+    el.setAttribute('aria-label', `${age} 岁`);
+  });
+
+  /* ---------------------------------------------------------
      3. 滚动：进度条 / 导航吸顶与隐藏 / 视差
      --------------------------------------------------------- */
   const nav      = $('#nav');
