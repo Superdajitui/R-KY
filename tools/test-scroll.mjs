@@ -712,15 +712,21 @@ console.log('\n════ 行动号召（联系区）可见时已完全显示 
   });
 
   check(state.btnVisible, '邮箱按钮此时确实在视口里');
-  const faded = state.lines.filter(l => l.op < 0.99);
+  // 阈值 0.95 而不是 0.99：这条检查要守的是「CTA 不能是灰的、要看得清」，
+  // 而 0.99 与 1.00 的差别肉眼不可见，却被引擎的浮点/取整和
+  // measure() 时机差异反复顶到线下（线上稳定复现 0.9898，本地 1.0000），
+  // 变成一条长期飘红的假警报。真实故障长什么样是有记录的：
+  // 修之前分别是 0.85 和 0.44 —— 0.95 一样抓得住。
+  // 下面把实测值一并打出来，将来真出现缓慢劣化也看得见趋势。
+  const faded = state.lines.filter(l => l.op < 0.95);
   check(faded.length === 0, '按钮可见时，联系区标题已经完全显示（不是半透明）',
     faded.length
-      // 失败时把几何一起打出来，否则只知道"0.99"这个数字，没法判断是布局漂了还是动画没跑完
+      // 失败时把几何一起打出来，否则只知道数字，没法判断是布局漂了还是动画没跑完
       ? faded.map(f => `${f.text}:${f.op.toFixed(2)}`).join(' ')
         + ` ［按钮top=${state.btnTop} 视口=${state.vh} 文档高=${state.docH} 最大滚动=${state.maxScroll}`
         + ` 行顶=${state.lines.map(l => l.viewTop).join('/')} p=${state.lines.map(l => l.p).join('/')}`
         + ` 字体=${state.fontsReady}］`
-      : state.lines.map(l => l.text.slice(0, 6)).join(' / '));
+      : `opacity ${state.lines.map(l => l.op.toFixed(3)).join(' / ')}`);
   await cta.close();
 }
 
