@@ -85,8 +85,21 @@ check(!s.leftoverCanvas, '没有残留的流体 canvas');
 check(s.fontAnton, 'Anton 字体（英文大字）已加载');
 check(s.fontInter, 'Inter 字体（正文）已加载');
 check(s.cnStroke && s.cnStroke !== '0px', '中文描边效果生效', s.cnStroke);
-check(s.ogImage.startsWith('https://'), 'og:image 是绝对地址', s.ogImage);
-check(s.canonical.startsWith('https://'), 'canonical 是绝对地址', s.canonical);
+// 这些标签必须是【本站自己的】绝对地址，不能只是"某个 https 地址"。
+// 原来的写法只判断 startsWith('https://')，于是打包时误用占位域名
+// example.github.io 也能一路绿灯通过 —— 检查太松，等于没检查。
+// 现在拿页面真实 origin 去比对，域名写错就一定报错。
+const ORIGIN = new URL(URL_BASE).origin;
+const PATH_PREFIX = new URL(URL_BASE).pathname.replace(/\/+$/, '');
+const ownUrl = (v) => {
+  try {
+    const u = new URL(v);
+    return u.origin === ORIGIN && u.pathname.startsWith(PATH_PREFIX);
+  } catch { return false; }
+};
+
+check(ownUrl(s.ogImage), 'og:image 指向本站真实地址', s.ogImage);
+check(ownUrl(s.canonical), 'canonical 指向本站真实地址', s.canonical);
 check(s.mailto === 'mailto:superdajitui@outlook.com', '联络邮箱正确', s.mailto || '（没找到）');
 
 /* ---------- 开场页 ---------- */
@@ -204,6 +217,29 @@ check(sm.word && sm.foot && sm.word.bottom < sm.foot.top, '名字与底部信息
 check(sm.word && sm.word.bottom <= sm.vh, '名字未溢出视口底部');
 await mob.screenshot({ path: 'tools/shots/live-mobile.png' });
 await mob.close();
+
+/* ---------- 5. SEO / 分享相关文件 ---------- */
+// 这些文件写过一次就没人再看，最容易默默跑着错域名。
+console.log('\nSEO 与分享');
+{
+  const sitemapRes = await fetch(`${URL_BASE}sitemap.xml`).catch(() => null);
+  const sitemap = sitemapRes?.ok ? await sitemapRes.text() : '';
+  check(sitemapRes?.ok === true, 'sitemap.xml 可访问', sitemapRes ? `HTTP ${sitemapRes.status}` : '取不到');
+  const loc = sitemap.match(/<loc>([^<]+)<\/loc>/)?.[1] || '';
+  check(ownUrl(loc), 'sitemap 里的地址是本站真实地址', loc || '（没有 loc）');
+
+  const robotsRes = await fetch(`${URL_BASE}robots.txt`).catch(() => null);
+  const robots = robotsRes?.ok ? await robotsRes.text() : '';
+  check(robotsRes?.ok === true, 'robots.txt 可访问', robotsRes ? `HTTP ${robotsRes.status}` : '取不到');
+  const sitemapLine = robots.match(/Sitemap:\s*(\S+)/i)?.[1] || '';
+  check(ownUrl(sitemapLine), 'robots.txt 里的 Sitemap 是本站真实地址', sitemapLine || '（没有 Sitemap 行）');
+
+  // 分享预览图必须真的能取到，否则微信/QQ 抓过去就是一张空白
+  const ogRes = await fetch(s.ogImage).catch(() => null);
+  const ogType = ogRes?.headers.get('content-type') || '';
+  check(ogRes?.ok === true && /image\//.test(ogType), 'og:image 真实可下载',
+    ogRes ? `HTTP ${ogRes.status} ${ogType}` : '取不到');
+}
 
 await browser.close();
 

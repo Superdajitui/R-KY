@@ -10,8 +10,8 @@
  * （GitHub Pages 的项目站点跑在 /仓库名/ 子路径下，绝对路径会 404）。
  *
  * 用法:
- *   node tools/build.mjs                              # 用占位域名
- *   node tools/build.mjs https://u.github.io/R-KY     # 写入真实地址
+ *   node tools/build.mjs                              # 用下面的正式域名
+ *   node tools/build.mjs https://u.github.io/R-KY     # 临时换成别的地址
  */
 import { mkdir, rm, cp, writeFile, readFile, readdir, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -21,7 +21,25 @@ import { fileURLToPath } from 'node:url';
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const DIST = path.join(ROOT, 'docs');
 
-const BASE = (process.argv[2] || 'https://example.github.io/R-KY').replace(/\/+$/, '');
+// 站点的正式地址。必须是真实可访问的域名：
+// canonical、og:image、sitemap.xml、robots.txt 都会写进这个值。
+//
+// 这里曾经默认成占位域名 https://example.github.io/R-KY，
+// 结果打包时忘了传参数，线上就跑着 example.github.io ——
+// 分享链接抓不到预览图、canonical 又把搜索引擎指向一个不存在的地址。
+// 所以默认值改成正式域名，并且下面加了硬拦截：占位域名一律拒绝打包。
+const SITE = 'https://superdajitui.github.io/R-KY';
+const PLACEHOLDER = /example\.(com|github\.io)|localhost|127\.0\.0\.1/i;
+
+const BASE = (process.argv[2] || SITE).replace(/\/+$/, '');
+
+if (PLACEHOLDER.test(BASE)) {
+  console.error(`\n✗ 拒绝打包：站点地址是占位/本地地址 —— ${BASE}`);
+  console.error('  canonical、og:image、sitemap 都会写成这个值，发出去就是坏的。');
+  console.error(`  正式域名应为: ${SITE}`);
+  console.error('  确实要用占位地址请显式传参，不要靠默认值。\n');
+  process.exit(1);
+}
 
 // 运行时需要的资源
 const INCLUDE = [
@@ -79,7 +97,8 @@ for (const file of ['index.html', '404.html']) {
   const before = html;
   html = html
     .replace(/(content=")assets\/img\/og\.jpg(")/g, `$1${BASE}/assets/img/og.jpg$2`)
-    .replace('</head>', `<link rel="canonical" href="${BASE}/">\n</head>`);
+    .replace('</head>', `<link rel="canonical" href="${BASE}/">\n`
+      + `<meta property="og:url" content="${BASE}/">\n</head>`);
 
   if (file === '404.html') {
     html = html.replace('<!--BUILD:BASE-->', `<base href="${urlPath}">`);
