@@ -47,6 +47,15 @@ async function shot(page, name, opts = {}) {
 
 /* ---------- 桌面：逐屏滚动，验证进场动效 ---------- */
 const desktop = await newPage(1440, 900);
+
+// 0. 开场页（滚到 0 就是它）
+await desktop.evaluate(() => window.scrollTo(0, 0));
+await sleep(600);
+await shot(desktop, 'desktop-0-welcome');
+
+// 首屏被欢迎页推到了第二屏，先滚下去
+await desktop.evaluate(() => window.scrollTo(0, innerHeight));
+await sleep(1800);           // 等 is-hero 的入场动画播完
 await shot(desktop, 'desktop-1-hero');
 
 for (const [i, sel] of ['#stats', '#about', '#passions', '#work', '#skills', '#contact'].entries()) {
@@ -71,6 +80,9 @@ await desktop.close();
 
 /* ---------- 移动端 ---------- */
 const mobile = await newPage(390, 844, 2);
+await shot(mobile, 'mobile-0-welcome');
+await mobile.evaluate(() => window.scrollTo(0, innerHeight));
+await sleep(1800);
 await shot(mobile, 'mobile-hero');
 for (const sel of ['#passions', '#work']) {
   await mobile.evaluate(s => {

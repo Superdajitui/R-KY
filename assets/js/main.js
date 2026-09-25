@@ -25,7 +25,8 @@
   function finishLoad() {
     loader.classList.add('is-done');
     document.body.classList.remove('is-locked');
-    document.body.classList.add('is-ready');
+    // 等遮罩淡出（.6s）再让欢迎页文字进场，两段动画不打架
+    setTimeout(() => document.body.classList.add('is-ready'), 420);
     // 揭幕结束后把遮罩移出渲染树，避免它继续参与合成
     loader.addEventListener('transitionend', () => loader.remove(), { once: true });
   }
@@ -56,10 +57,18 @@
      --------------------------------------------------------- */
   const nav      = $('#nav');
   const progress = $('#progress');
+  const welcome  = $('#welcome');
   const pEls = $$('[data-parallax]').map(el => ({
     el,
     f: parseFloat(el.dataset.parallax) || 0,
   }));
+
+  // 点欢迎页任意位置 = 下滑进入主页。
+  // 键盘用户走的是页脚那个 <a href="#hero">，两条路都通。
+  welcome?.addEventListener('click', (e) => {
+    if (e.target.closest('a')) return;          // 链接自己会处理
+    window.scrollTo({ top: window.innerHeight, behavior: 'smooth' });
+  });
 
   let lastY = 0;
   let lastSweepY = 0;
@@ -67,25 +76,41 @@
 
   function onScroll() {
     const y = window.scrollY;
+    const vh = window.innerHeight;
 
     // 进度条
     const max = document.documentElement.scrollHeight - window.innerHeight;
     progress.style.width = (max > 0 ? (y / max) * 100 : 0) + '%';
 
+    // ── 欢迎页 → 主页的切换 ──────────────────────────────
+    // 主页是被 margin-top:100svh 推到下方的，所以"滑上来"这件事
+    // 完全由滚动位置驱动，这里只负责状态类名和一层视差。
+    const leavingWelcome = y > vh * 0.98;
+    document.body.classList.toggle('at-welcome', !leavingWelcome);
+    // is-hero 一旦加上就不再移除：首屏动画只播一次，
+    // 滚回去重看时不该重播
+    if (y > vh * 0.55) document.body.classList.add('is-hero');
+    if (welcome && !reduce && y < vh * 1.4) {
+      const p = Math.min(1, y / vh);
+      welcome.style.setProperty('--wy', `${(-y * 0.2).toFixed(1)}px`);
+      welcome.style.setProperty('--wo', String(Math.max(0, 1 - p * 1.15)));
+    }
+
     // 导航：吸顶 + 向下滚动时收起
-    nav.classList.toggle('is-stuck', y > 40);
-    if (y > 320 && y > lastY) nav.classList.add('is-hidden');
+    nav.classList.toggle('is-stuck', y > vh + 40);
+    if (y > vh + 320 && y > lastY) nav.classList.add('is-hidden');
     else nav.classList.remove('is-hidden');
     lastY = y;
 
     // 一次性跨过近一整屏 => 判定为锚点跳转，补一次显现清扫
-    if (Math.abs(y - lastSweepY) > window.innerHeight * 0.9) revealSweep();
+    if (Math.abs(y - lastSweepY) > vh * 0.9) revealSweep();
     lastSweepY = y;
 
-    // 视差（只在首屏范围内计算，滚出去就停）
-    if (!reduce && y < window.innerHeight * 1.15) {
+    // 视差：以「主页开始进入视口」为原点计算，不然会被欢迎页那一屏顶掉
+    const hy = Math.max(0, y - vh);
+    if (!reduce && hy < vh * 1.15) {
       for (const { el, f } of pEls) {
-        el.style.transform = `translateY(${(y * f).toFixed(2)}px)`;
+        el.style.transform = `translateY(${(hy * f).toFixed(2)}px)`;
       }
     }
     ticking = false;

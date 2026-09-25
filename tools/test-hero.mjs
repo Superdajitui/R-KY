@@ -63,6 +63,11 @@ async function openPage(w, h, dsf = 1) {
 console.log('\n════ 桌面 1440x900 ════');
 const page = await openPage(1440, 900);
 
+// 首屏现在被欢迎页推到了第二屏，得先滚下去；
+// 顺便等 is-hero 的入场动画播完，否则量到的是动画中途的状态
+await page.evaluate(() => window.scrollTo(0, innerHeight));
+await sleep(1800);
+
 const st = await page.evaluate(() => {
   const c = document.querySelector('.hero__portrait');
   const pic = document.querySelector('.hero__portrait picture');
@@ -73,7 +78,11 @@ const st = await page.evaluate(() => {
     imgSrc: (img?.currentSrc || '').split('/').pop(),
     imgNatural: img ? `${img.naturalWidth}x${img.naturalHeight}` : '无',
     pictureDisplay: pic ? getComputedStyle(pic).display : '无',
-    box: { x: r.left, y: r.top, w: r.width, h: r.height },
+    scrollY: Math.round(window.scrollY),
+    // ⚠ getBoundingClientRect 给的是「视口坐标」，而 puppeteer 的
+    // screenshot({clip}) 用的是「文档坐标」，必须把滚动偏移加回去。
+    // 加了欢迎页之后两者差了一整屏 —— 之前没暴露是因为首屏正好在文档顶部。
+    box: { x: r.left, y: r.top + window.scrollY, w: r.width, h: r.height },
     // 流体效果已移除，这些不该再出现在 DOM 里
     leftoverCanvas: !!document.querySelector('.hero__canvas'),
     leftoverClass: c.classList.contains('is-webgl') || c.classList.contains('is-fluid'),
@@ -84,7 +93,7 @@ const clip = {
   x: Math.max(0, Math.round(st.box.x)),
   y: Math.max(0, Math.round(st.box.y)),
   width: Math.round(st.box.w),
-  height: Math.round(Math.min(st.box.h, 900 - st.box.y)),
+  height: Math.round(st.box.h),
 };
 const shot = await page.screenshot({ clip });
 await page.screenshot({ path: 'tools/shots/hero-desktop.png' });
@@ -128,6 +137,8 @@ await page.close();
 /* ═══════════ 移动端 ═══════════ */
 console.log('\n════ 移动端 390x844 ════');
 const mob = await openPage(390, 844, 2);
+await mob.evaluate(() => window.scrollTo(0, innerHeight));
+await sleep(1800);
 const ms = await mob.evaluate(() => {
   const img = document.querySelector('.hero__img');
   const c = document.querySelector('.hero__portrait');
@@ -140,13 +151,16 @@ const ms = await mob.evaluate(() => {
     pictureDisplay: pic ? getComputedStyle(pic).display : '无',
     boxBottom: r.bottom,
     footTop: foot ? foot.top : 0,
+    // 文档坐标，理由同桌面端
+    box: { x: r.left, y: r.top + window.scrollY, w: r.width, h: r.height },
   };
 });
-const mClip = await mob.evaluate(() => {
-  const r = document.querySelector('.hero__portrait').getBoundingClientRect();
-  return { x: Math.max(0, Math.round(r.left)), y: Math.max(0, Math.round(r.top)),
-           width: Math.round(r.width), height: Math.round(Math.min(r.height, innerHeight - r.top)) };
-});
+const mClip = {
+  x: Math.max(0, Math.round(ms.box.x)),
+  y: Math.max(0, Math.round(ms.box.y)),
+  width: Math.round(ms.box.w),
+  height: Math.round(ms.box.h),
+};
 const mb = await brightness(await mob.screenshot({ clip: mClip }));
 console.log(`  图片: ${ms.src}  区域亮度 ${mb.toFixed(1)}`);
 check(ms.loaded, '照片已加载');

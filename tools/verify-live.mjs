@@ -85,6 +85,28 @@ check(s.cnStroke && s.cnStroke !== '0px', '中文描边效果生效', s.cnStroke
 check(s.ogImage.startsWith('https://'), 'og:image 是绝对地址', s.ogImage);
 check(s.canonical.startsWith('https://'), 'canonical 是绝对地址', s.canonical);
 
+/* ---------- 开场页 ---------- */
+const wel = await page.evaluate(() => {
+  const el = document.querySelector('#welcome');
+  const cs = el ? getComputedStyle(el) : null;
+  const title = document.querySelector('.welcome__title');
+  return {
+    exists: !!el,
+    bg: cs?.backgroundColor || '',
+    text: title?.textContent.replace(/\s+/g, '') || '',
+    atWelcome: document.body.classList.contains('at-welcome'),
+  };
+});
+console.log('\n开场页');
+check(wel.exists, '欢迎页存在');
+check(/210,\s*255,\s*0/.test(wel.bg), '背景是主题色', wel.bg);
+check(wel.text.includes('欢迎来到我的个人网站'), '文案完整', wel.text);
+check(wel.atWelcome, '初始停在欢迎页');
+await page.screenshot({ path: 'tools/shots/live-welcome.png' });
+
+// 滚到首屏（开场页占了第一屏）
+await page.evaluate(() => window.scrollTo(0, innerHeight));
+await sleep(1800);
 await page.screenshot({ path: 'tools/shots/live-desktop.png' });
 
 /* ---------- 2. 滚动到底，确认所有板块都显现 ---------- */

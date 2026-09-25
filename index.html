@@ -30,12 +30,16 @@
 <link rel="preload" href="assets/fonts/inter-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="assets/css/style.css">
 <noscript><style>
-  /* 无脚本兜底：不让预加载遮罩挡住内容，一切静态可见 */
-  .loader,.cursor,.grain,.progress{display:none!important}
+  /* 无脚本兜底：不让预加载遮罩和欢迎页挡住内容，一切静态可见 */
+  .loader,.cursor,.grain,.progress,.welcome{display:none!important}
   .hero__eyebrow,.hero__word,.hero__portrait,.hero__foot{opacity:1!important}
 </style></noscript>
 </head>
 <body>
+
+<!-- 「回到顶部」的落点。欢迎页是 position:fixed，不占文档流，
+     不能直接拿它当锚点，所以在最前面放一个零高度的静态元素。 -->
+<span id="top"></span>
 
 <!-- ══════════ 预加载遮罩 ══════════ -->
 <div class="loader" id="loader">
@@ -43,6 +47,35 @@
     <div class="loader__num" id="loaderNum">00</div>
     <div class="loader__bar"><i id="loaderBar"></i></div>
     <div class="loader__label">任恺昱 · KERRY R</div>
+  </div>
+</div>
+
+<!-- ══════════ 欢迎页 ══════════
+     一整片主题色，固定铺满视口；主页从下方滑上来把它盖住。
+     因为 position:fixed，滚回顶部还能再看到它。
+     无脚本时由上面的 <noscript> 直接隐藏。 -->
+<div class="welcome" id="welcome">
+  <div class="welcome__grid" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+
+  <div class="welcome__top">
+    <span>任恺昱 · Kerry R</span>
+    <span>WELCOME</span>
+  </div>
+
+  <div class="welcome__body">
+    <p class="welcome__label"><span class="dot"></span>Hello</p>
+    <p class="welcome__title">
+      <span class="welcome__line"><span>欢迎来到</span></span>
+      <span class="welcome__line welcome__line--outline"><span>我的个人网站</span></span>
+    </p>
+  </div>
+
+  <div class="welcome__foot">
+    <span class="welcome__roles">学生 · 开发者 · 创作者</span>
+    <a class="welcome__scroll" href="#hero">
+      <span>向下滚动</span>
+      <svg viewBox="0 0 12 26" aria-hidden="true"><path d="M6 0v22M1 17l5 6 5-6" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+    </a>
   </div>
 </div>
 
@@ -88,7 +121,10 @@
   <a href="#contact"><b>05</b>联系</a>
 </div>
 
-<main id="top">
+<!-- 占位：把主页顶下去一整屏，形成"主页滑上来盖住欢迎页"的效果 -->
+<div class="welcome-spacer" aria-hidden="true"></div>
+
+<main>
 
   <!-- ══════════ 首屏 ══════════ -->
   <section class="hero" id="hero">

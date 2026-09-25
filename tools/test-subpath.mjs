@@ -56,6 +56,11 @@ page.on('console', m => { if (m.type() === 'error') failed.push(`控制台: ${m.
 await page.goto(URL_BASE, { waitUntil: 'networkidle0', timeout: 30000 });
 await sleep(2600);
 
+// 开场页占了第一屏，首屏在第二屏；滚过去并等 is-hero 入场动画播完，
+// 否则量到的大字名还是 opacity:0（那是正常的初始态，不是 bug）
+await page.evaluate(() => window.scrollTo(0, innerHeight));
+await sleep(1800);
+
 const state = await page.evaluate(() => {
   const img = document.querySelector('.hero__portrait img');
   const cs = getComputedStyle(document.querySelector('.hero__word--top'));
