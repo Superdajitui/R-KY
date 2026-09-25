@@ -7,14 +7,14 @@
 <script>document.documentElement.className='js'</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>任恺昱 Kerry R — 学生 / 开发者 / 创作者</title>
-<meta name="description" content="任恺昱（Kerry R）的个人网站 —— 学生、开发者、创作者。把想法做成能跑的东西。">
+<meta name="description" content="任恺昱（Kerry R），2006 年 1 月生，魔羯座，ISTJ。学生、开发者、创作者 —— 把想法做成能跑的东西。喜欢摄影、赛车和孙燕姿的歌。">
 <meta name="theme-color" content="#111112">
 
 <!-- 社交分享预览（微信 / QQ / Twitter 抓取的就是这几条）。
      og:image 必须是绝对地址才可靠，打包时 tools/build.mjs 会按真实域名补全。 -->
 <meta property="og:type" content="profile">
 <meta property="og:title" content="任恺昱 Kerry R — 学生 / 开发者 / 创作者">
-<meta property="og:description" content="把想法做成能跑的东西。">
+<meta property="og:description" content="2006 年 1 月生，魔羯座，ISTJ。把想法做成能跑的东西。喜欢摄影、赛车和孙燕姿的歌。">
 <meta property="og:image" content="assets/img/og.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -64,6 +64,7 @@
 
   <nav class="nav__links" aria-label="主导航">
     <a href="#about"><span data-scramble>关于</span></a>
+    <a href="#passions"><span data-scramble>热爱</span></a>
     <a href="#work"><span data-scramble>项目</span></a>
     <a href="#skills"><span data-scramble>技能</span></a>
     <a href="#contact"><span data-scramble>联系</span></a>
@@ -81,9 +82,10 @@
 <!-- 移动端菜单 -->
 <div class="menu" id="menu">
   <a href="#about"><b>01</b>关于</a>
-  <a href="#work"><b>02</b>项目</a>
-  <a href="#skills"><b>03</b>技能</a>
-  <a href="#contact"><b>04</b>联系</a>
+  <a href="#passions"><b>02</b>热爱</a>
+  <a href="#work"><b>03</b>项目</a>
+  <a href="#skills"><b>04</b>技能</a>
+  <a href="#contact"><b>05</b>联系</a>
 </div>
 
 <main id="top">
@@ -144,22 +146,22 @@
     </div>
   </div>
 
-  <!-- ══════════ 数据档案 ══════════ -->
+  <!-- ══════════ 档案 ══════════ -->
   <section class="stats" id="stats">
     <div class="wrap">
       <p class="sec__label" data-reveal><i>01</i> 档案 / PROFILE</p>
       <div class="stats__row">
         <div class="stat" data-reveal>
-          <div class="stat__num"><span data-count="4">0</span></div>
-          <div class="stat__key">项目<em>PROJECTS</em></div>
+          <div class="stat__num"><span data-count="2006">0</span><small>.01</small></div>
+          <div class="stat__key">出生<em>BORN</em></div>
         </div>
         <div class="stat" data-reveal>
-          <div class="stat__num"><span data-count="8">0</span></div>
-          <div class="stat__key">技能<em>SKILLS</em></div>
+          <div class="stat__num stat__num--word">ISTJ</div>
+          <div class="stat__key">人格<em>PERSONALITY</em></div>
         </div>
         <div class="stat" data-reveal>
-          <div class="stat__num"><span data-count="3">0</span></div>
-          <div class="stat__key">语言<em>LANGUAGES</em></div>
+          <div class="stat__num stat__num--sym" aria-label="魔羯座">♑</div>
+          <div class="stat__key">魔羯座<em>CAPRICORN</em></div>
         </div>
         <div class="stat" data-reveal>
           <div class="stat__num"><span data-count="24">0</span><small>/7</small></div>
@@ -181,21 +183,30 @@
 
       <div class="about__right">
         <p data-reveal>
-          我是任恺昱，一名学生、开发者和创作者。我喜欢把抽象的想法变成
-          真的能跑起来的东西 —— 从 MATLAB 的仿真模型，到一个可以点击的界面。
+          我生于 2006 年 1 月，魔羯座 —— 冬天里最后一段，也是最沉得住气的一段。
+          土象星座的耐心，加上 ISTJ 那种近乎固执的条理，构成了我做事的基本方式：
+          不太相信灵光一现，更相信把一件事拆成步骤，然后一格一格走完。
+        </p>
+        <p data-reveal>
+          我是学生，也是开发者和创作者。喜欢把抽象的想法变成真的能跑起来的东西
+          —— 从 MATLAB 的一个仿真模型，到一个可以点击的界面。
         </p>
         <p data-reveal>
           我相信好的工程和好的设计其实是同一种手艺：克制、准确、恰到好处。
           多余的东西不是风格，是噪音。
         </p>
         <p class="about__en" data-reveal>
-          I'm Kerry R — a student, developer and creator. I turn abstract ideas
-          into things that actually run, from simulation models to interfaces
-          you can click. Good engineering and good design, to me, are the same
-          craft: restrained, precise, deliberate.
+          Born in January 2006 — Capricorn, the most patient stretch of winter.
+          Add an ISTJ's stubborn tidiness, and you get the way I work: I don't
+          trust flashes of inspiration, I trust breaking a thing into steps and
+          finishing them one by one. I'm a student, developer and creator, and
+          good engineering and good design are, to me, the same craft:
+          restrained, precise, deliberate.
         </p>
 
         <ul class="about__facts" data-reveal>
+          <li><b>出生</b> 2006.01 · 魔羯座</li>
+          <li><b>人格</b> ISTJ · 内倾 · 实感 · 思考 · 判断</li>
           <li><b>方向</b> 电气 / 自动化 · 仿真与控制</li>
           <li><b>工具</b> MATLAB · Python · C/C++ · JavaScript</li>
           <li><b>状态</b> 在读学生 · 开放实习与合作</li>
@@ -204,10 +215,52 @@
     </div>
   </section>
 
+  <!-- ══════════ 热爱 ══════════ -->
+  <section class="passions" id="passions">
+    <div class="wrap">
+      <p class="sec__label" data-reveal><i>03</i> 热爱 / PASSIONS</p>
+      <h2 class="sec__title" data-reveal>赛道、取景框，<em>和一副耳机</em>。</h2>
+
+      <div class="passions__grid">
+        <article class="passion" data-reveal>
+          <span class="passion__idx">01</span>
+          <h3 class="passion__title">摄影</h3>
+          <p class="passion__en">Photography</p>
+          <p class="passion__text">
+            我喜欢摄影，因为它逼人慢下来。取景框是个很诚实的地方 ——
+            你怎么看世界，它就怎么还给你。多数时候我拍的都不是什么大场面，
+            只是一段刚好对的光。
+          </p>
+        </article>
+
+        <article class="passion" data-reveal>
+          <span class="passion__idx">02</span>
+          <h3 class="passion__title">赛车</h3>
+          <p class="passion__en">Motorsport</p>
+          <p class="passion__text">
+            我喜欢赛车。不只是因为快，而是那个速度里，一条弯道的走线值得被
+            讨论一整个下午。那是把直觉、纪律和物理规律，同时压进三秒钟的运动。
+          </p>
+        </article>
+
+        <article class="passion" data-reveal>
+          <span class="passion__idx">03</span>
+          <h3 class="passion__title">音乐</h3>
+          <p class="passion__en">Music · 孙燕姿</p>
+          <p class="passion__text">
+            我听孙燕姿。从《天黑黑》到《遇见》，她的歌里几乎没有声嘶力竭，
+            只有把话好好说完的克制。那正好是我喜欢的音量 ——
+            也是我做事的音量。
+          </p>
+        </article>
+      </div>
+    </div>
+  </section>
+
   <!-- ══════════ 项目 ══════════ -->
   <section class="work" id="work">
     <div class="wrap">
-      <p class="sec__label" data-reveal><i>03</i> 项目 / SELECTED WORK</p>
+      <p class="sec__label" data-reveal><i>04</i> 项目 / SELECTED WORK</p>
       <h2 class="sec__title" data-reveal>做过的一些<em>东西</em>。</h2>
 
       <div class="cards">
@@ -249,7 +302,7 @@
   <!-- ══════════ 技能 ══════════ -->
   <section class="skills" id="skills">
     <div class="wrap">
-      <p class="sec__label" data-reveal><i>04</i> 技能 / TOOLKIT</p>
+      <p class="sec__label" data-reveal><i>05</i> 技能 / TOOLKIT</p>
       <h2 class="sec__title" data-reveal>手上的<em>工具箱</em>。</h2>
 
       <ul class="skills__list">
@@ -269,7 +322,7 @@
   <section class="contact" id="contact">
     <div class="contact__glow" aria-hidden="true"></div>
     <div class="wrap">
-      <p class="sec__label" data-reveal><i>05</i> 联系 / CONTACT</p>
+      <p class="sec__label" data-reveal><i>06</i> 联系 / CONTACT</p>
       <h2 class="contact__big" data-reveal>一起做点<br><em>好玩的</em>东西？</h2>
 
       <div class="contact__row" data-reveal>

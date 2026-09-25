@@ -49,7 +49,7 @@ async function shot(page, name, opts = {}) {
 const desktop = await newPage(1440, 900);
 await shot(desktop, 'desktop-1-hero');
 
-for (const [i, sel] of ['#stats', '#about', '#work', '#skills', '#contact'].entries()) {
+for (const [i, sel] of ['#stats', '#about', '#passions', '#work', '#skills', '#contact'].entries()) {
   await desktop.evaluate(s => {
     document.querySelector(s).scrollIntoView({ block: 'start', behavior: 'instant' });
   }, sel);
@@ -72,9 +72,13 @@ await desktop.close();
 /* ---------- 移动端 ---------- */
 const mobile = await newPage(390, 844, 2);
 await shot(mobile, 'mobile-hero');
-await mobile.evaluate(() => document.querySelector('#work').scrollIntoView({ block: 'start', behavior: 'instant' }));
-await sleep(1500);
-await shot(mobile, 'mobile-work');
+for (const sel of ['#passions', '#work']) {
+  await mobile.evaluate(s => {
+    document.querySelector(s).scrollIntoView({ block: 'start', behavior: 'instant' });
+  }, sel);
+  await sleep(1400);
+  await shot(mobile, `mobile-${sel.slice(1)}`);
+}
 await mobile.close();
 
 /* ---------- 平板（横竖屏都测，断点在 820px）---------- */
