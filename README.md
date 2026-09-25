@@ -135,11 +135,12 @@ personal-site/
 
 | 位置 | 现在的内容 | 改成 |
 |---|---|---|
-| `index.html` 搜索 `hello@example.com` | 占位邮箱 | **你的真实邮箱** |
 | `index.html` 搜索 `GitHub ↗` | `href="#"` | 你的 GitHub 主页 |
 | `index.html` 项目版块 4 张卡片 | 我根据你桌面/工作区推测的占位内容 | 你真实的项目 |
 | `index.html` 技能版块的 `--lv:88%` 等 | 我估的熟练度条长度 | 按实际调整 |
 | `assets/css/style.css` 的 `--neon` | `#d2ff00` 霓虹绿 | 想换主色改这一行即可 |
+
+> 邮箱已经换成 `superdajitui@outlook.com`（`index.html` 和 `404.html` 各一处）。
 
 ---
 
