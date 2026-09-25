@@ -13,6 +13,7 @@
  * 用法: node tools/test-scroll.mjs [url]
  */
 import puppeteer from 'puppeteer-core';
+import sharp from 'sharp';
 import { existsSync } from 'node:fs';
 
 const URL_BASE = process.argv[2] || 'http://127.0.0.1:4321/';
@@ -305,12 +306,163 @@ const rescued = await sp.evaluate(async () => {
 check(rescued, '加上 .scrub-off 兜底后全部内容立刻恢复可见');
 await sp.close();
 
-/* ══════════════════ 5. 标题行不许折行 ══════════════════ */
+/* ══════════════════ 5. 上推过程中字必须是完整的 ══════════════════ */
 /*
-   逐行揭示用的是"外层 overflow:hidden、内层推上来"的做法，
-   一行 = 一个裁切框。如果某个宽度下这行字太长而折成两行，
-   裁切框会跟着变高，动画区间也跟着翻倍，看起来就是一整块糊上去。
-   （内容最终不会丢，但那个宽度下的观感是坏的，而且很难注意到。）
+   用户反馈过：向上推的文字在中途只露出上半截，像"半个字"。
+   根因是遮罩式揭示 —— 外层 overflow:hidden、内层从下方推上来，
+   中途必然把字水平切一刀。汉字横画集中在中部，切一刀特别明显。
+
+   所以这里查两件事：
+     a. 结构性：.ln / .welcome__line 不能再是 overflow:hidden（那是刀口）；
+     b. 功能性：把动画停在半路截图，量字的墨迹高度，
+        必须和动画结束时的墨迹高度基本一致。裁切掉了就会矮一大截。
+   —— 只查 (a) 不够：将来有人换个元素来裁，结构检查就漏了。
+*/
+console.log('\n════ 上推过程中字形完整（不出现半个字）════');
+
+const cp = await browser.newPage();
+await cp.setViewport({ width: 1440, height: 900 });
+await cp.goto(URL_BASE, { waitUntil: 'networkidle0', timeout: 60000 });
+await sleep(2600);
+
+const clipInfo = await cp.evaluate(() => {
+  const bad = [];
+  const check = (sel) => {
+    for (const el of document.querySelectorAll(sel)) {
+      const ov = getComputedStyle(el).overflow;
+      if (ov !== 'visible') bad.push(`${sel}:overflow=${ov}`);
+    }
+  };
+  check('.ln');
+  check('.welcome__line');
+  return { bad, ln: document.querySelectorAll('.ln').length };
+});
+check(clipInfo.bad.length === 0, '承载上推动画的元素没有裁切（overflow 不是 hidden）',
+  clipInfo.bad.length ? [...new Set(clipInfo.bad)].join(' ') : `${clipInfo.ln} 个行容器都是 visible`);
+
+// --- 功能性：把动画停在半路，量墨迹高度 ---
+//
+// 量之前必须把【同一栏里的其它文字】临时藏起来。
+// 一开始没藏，窗口上下各留 26px 余量，结果把下面那一行标题的墨迹也框进去了，
+// 量出 85px（字号才 54px）—— 数据是错的，但因为"看起来不小"，
+// 差点就把"没被裁切"这个结论建立在错误数字上。
+const hideOthers = (keepSel) => cp.evaluate((sel) => {
+  const keep = document.querySelector(sel);
+  for (const el of document.querySelectorAll('.ln__in')) {
+    if (el !== keep) el.style.visibility = 'hidden';
+  }
+  // 左栏的小标签就在标题上方 25px 处，也会落进取样窗口
+  for (const el of document.querySelectorAll('.about__left .sec__label, .contact .sec__label')) {
+    el.style.visibility = 'hidden';
+  }
+}, keepSel);
+
+const showAll = () => cp.evaluate(() => {
+  for (const el of document.querySelectorAll('.ln__in, .sec__label')) el.style.visibility = '';
+});
+
+const inkHeight = async (sel) => {
+  const box = await cp.evaluate((s) => {
+    const el = document.querySelector(s);
+    const r = el.getBoundingClientRect();
+    const pad = 30;                       // 已排除邻居，余量可以给足
+    return {
+      x: Math.round(r.left + scrollX) - 8,
+      y: Math.round(r.top + scrollY) - pad,
+      width: Math.round(r.width) + 16,
+      height: Math.round(r.height) + pad * 2,
+      p: parseFloat(getComputedStyle(el).getPropertyValue('--p') || '0'),
+    };
+  }, sel);
+  const buf = await cp.screenshot({
+    clip: { x: box.x, y: box.y, width: box.width, height: box.height },
+    captureBeyondViewport: true,
+  });
+  const { data, info } = await sharp(buf).greyscale().raw().toBuffer({ resolveWithObject: true });
+  // 阈值放宽到 40：动画中途字是半透明的，阈值太高会把淡的部分漏掉，
+  // 反而量出一个偏矮的墨迹，把"没被裁"误判成"被裁了"。
+  const TH = 40;
+  let top = Infinity, bot = -1;
+  for (let y = 0; y < info.height; y++) {
+    for (let x = 0; x < info.width; x++) {
+      if (data[y * info.width + x] > TH) { if (y < top) top = y; if (y > bot) bot = y; }
+    }
+  }
+  return { h: bot < 0 ? 0 : bot - top + 1, p: box.p };
+};
+
+const heading = '.about__left .sec__title .ln:first-child .ln__in';
+
+// 把这一行滚到进度≈0.5 的位置。阻尼会自己收敛到该位置对应的进度。
+// 一开始是直接从页面顶部 scrollBy 的，步长 26px × 40 次根本走不到
+// 「关于」那一屏，进度一直是 0 —— 循环条件写得再对也没用。
+const scrollToMid = async () => {
+  await cp.evaluate((s) => {
+    const el = document.querySelector(s);
+    window.scrollBy(0, el.getBoundingClientRect().top - innerHeight + 30);
+  }, heading);
+  await sleep(1300);
+  for (let i = 0; i < 40; i++) {
+    const cur = await cp.evaluate(s =>
+      parseFloat(getComputedStyle(document.querySelector(s)).getPropertyValue('--p') || '0'), heading);
+    if (cur >= 0.44) break;
+    await cp.evaluate(() => window.scrollBy(0, 30));
+    await sleep(240);
+  }
+  await sleep(1000);
+};
+
+await scrollToMid();
+await hideOthers(heading);
+const mid = await inkHeight(heading);
+
+// 再滚到动画结束，量同一个元素的完整墨迹
+await cp.evaluate((s) => {
+  const el = document.querySelector(s);
+  window.scrollBy(0, el.getBoundingClientRect().top - 220);
+}, heading);
+await sleep(1300);
+const full = await inkHeight(heading);
+await showAll();
+
+const ratio = full.h > 0 ? mid.h / full.h : 0;
+check(mid.p > 0.3 && mid.p < 0.7, '成功把动画停在半路取样', `--p=${mid.p.toFixed(2)}`);
+check(full.h > 20 && full.h < 90, '取样窗口干净（墨迹高度与字号相称）',
+  `完整墨迹 ${full.h}px，字号约 54px`);
+check(ratio >= 0.9, '动画中途字的墨迹高度与结束时一致（没有被切掉一半）',
+  `中途 ${mid.h}px / 结束 ${full.h}px = ${(ratio * 100).toFixed(0)}%`);
+
+/* 自检：把用户反馈的那种"裁切式上推"注入回去，确认这条检查真的抓得住。
+   只查 overflow 是不够的 —— 将来若换个元素来裁，结构检查就漏了，
+   而这把尺子量的是画面本身，换谁裁都能量出来。
+
+   必须带 !important：源码里那条规则是 `html.js .sec__title .ln__in`，
+   特异性比探针的 `.sec__title .ln__in` 高，不加 !important 探针根本压不住它 ——
+   第一次就是这么写的，结果只模拟出了"轻微裁切"（89%），
+   离真实故障差得远，自检通过得毫无意义。 */
+await cp.evaluate(() => {
+  const s = document.createElement('style');
+  s.id = '__clipProbe';
+  s.textContent =
+    '.sec__title .ln{overflow:hidden !important}'
+    + '.sec__title .ln__in{transform:translateY(calc((1 - var(--p,0)) * 112%)) !important}';
+  document.head.appendChild(s);
+});
+await scrollToMid();
+await hideOthers(heading);
+const clipped = await inkHeight(heading);
+await showAll();
+await cp.evaluate(() => document.getElementById('__clipProbe')?.remove());
+
+const clippedRatio = full.h > 0 ? clipped.h / full.h : 1;
+check(clippedRatio < 0.9, '注入裁切式做法后检查能抓到（证明这条断言有效）',
+  `裁切后 ${clipped.h}px / 完整 ${full.h}px = ${(clippedRatio * 100).toFixed(0)}%`);
+await cp.close();
+
+/* ══════════════════ 7. 标题行不许折行 ══════════════════ */
+/*
+   一行 = 一个行容器。如果某个宽度下这行字太长而折成两行，
+   行结构就和设计不符，动画区间也跟着翻倍。
 
    分两档，理由不同：
      ≥430px：必须单行。这个宽度以上排版是设计过的，折行就是出了 bug。

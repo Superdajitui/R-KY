@@ -278,13 +278,22 @@ body.is-ready .welcome__label{opacity:1;transform:none}
   font-size:clamp(2.5rem,12vw,9.5rem);
   line-height:1.04;letter-spacing:-.02em;
 }
-/* 逐行遮罩揭示：外层裁切，内层从下方推上来 */
-.welcome__line{display:block;overflow:hidden;padding-bottom:.06em}
+/* 逐行上推揭示：整行一边上浮一边淡入。
+   ------------------------------------------------------------
+   这里【刻意不裁切】。
+   原来的做法是外层 overflow:hidden、内层从 115% 推上来（遮罩揭示），
+   中途必然只露出字的上半截 —— 汉字的横画集中在中间，
+   被水平切一刀后看着就是"半个字"，很廉价。
+   现在改成 translateY + opacity：字始终是完整的，
+   只是位置略低、透明一点，滚到位时正好归位。
+   位移量用 em，跟着字号走（0.42em ≈ 半个字身，够看出"推上来"又不打架）。 */
+.welcome__line{display:block}
 .welcome__line > span{
-  display:block;transform:translateY(115%);
-  transition:transform 1.15s var(--ease);
+  display:block;
+  opacity:0;transform:translateY(.42em);
+  transition:opacity 1s var(--ease),transform 1.15s var(--ease);
 }
-body.is-ready .welcome__line > span{transform:none}
+body.is-ready .welcome__line > span{opacity:1;transform:none}
 body.is-ready .welcome__line:nth-child(2) > span{transition-delay:.13s}
 /* 镂空描边的做法：描边 + 一层同字填充盖住内半部分。
    ------------------------------------------------------------
@@ -795,19 +804,19 @@ html.js [data-scrub="read"]{
   opacity:calc(.26 + .74 * var(--p,0));
 }
 
-/* --- 大标题逐行揭示 ---
+/* --- 大标题逐行上推 ---
    行结构由 main.js 按 <br> 拆出来（中文没有词间空格，只能按行拆）。
-   padding + 负 margin：给裁切框上下各留一点余量，
-   否则 line-height 1.18 会把汉字的上下缘切掉；
-   负 margin 再把多出来的高度收回去，版面和加动画之前完全一致。 */
-.sec__title .ln,.contact__big .ln{
-  display:block;overflow:hidden;
-  padding-block:.14em;margin-block:-.14em;
-}
+   和开场页一样【不做裁切】：裁切式遮罩在中途只露出字的上半截，
+   汉字横画集中在中部，被切一刀就是"半个字"。
+   改成"整行上浮 + 淡入"，字全程完整。
+   位移 0.42em 跟着字号走；行与行天然错落（下面那行更晚进入视口），
+   而且先到位的那行位置更高，两行不会撞在一起。 */
+.sec__title .ln,.contact__big .ln{display:block}
 .sec__title .ln__in,.contact__big .ln__in{display:block}
 html.js .sec__title .ln__in,
 html.js .contact__big .ln__in{
-  transform:translateY(calc((1 - var(--p,0)) * 112%));
+  opacity:var(--p,0);
+  transform:translateY(calc((1 - var(--p,0)) * .42em));
 }
 
 /* --- 首屏退场 ---
@@ -911,7 +920,7 @@ html.js .contact__glow{
   html.js .hero__foot{opacity:1}
   /* 欢迎页的文字揭示也一并跳过，直接显示 */
   .welcome__top,.welcome__label,.welcome__foot{opacity:1}
-  .welcome__line > span{transform:none}
+  .welcome__line > span{opacity:1;transform:none}
 
   /* 滚动动效全部让位：一律显示在终态。
      main.js 在 reduce 下也会把 --p 直接写成 1（双保险）：
