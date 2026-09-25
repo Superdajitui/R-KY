@@ -665,7 +665,11 @@ console.log('\n════ 行动号召（联系区）可见时已完全显示 
   const cta = await browser.newPage();
   await cta.setViewport({ width: 1440, height: 900 });
   await cta.goto(URL_BASE, { waitUntil: 'networkidle0', timeout: 60000 });
-  await sleep(2600);
+  // 必须等字体换入再滚动：中文字体是后加载的，换入后标题行高会变，
+  // 滚动位置就要重算。不等的话偶尔会量到 0.99 —— 那是布局还没稳，
+  // 不是动画没做完（线上复跑一次就过了，典型的 flaky）。
+  await cta.evaluate(() => document.fonts.ready);
+  await sleep(600);
 
   // 滚到"邮箱按钮刚露出来"的位置
   await cta.evaluate(() => {
@@ -676,19 +680,38 @@ console.log('\n════ 行动号召（联系区）可见时已完全显示 
 
   const state = await cta.evaluate(() => {
     const btn = document.querySelector('.contact__row').getBoundingClientRect();
+    const vh = innerHeight;
     return {
       btnVisible: btn.top < innerHeight && btn.bottom > 0,
-      lines: [...document.querySelectorAll('.contact__big .ln__in')].map(el => ({
-        text: el.textContent.trim(),
-        op: +getComputedStyle(el).opacity,
-      })),
+      vh,
+      btnTop: Math.round(btn.top),
+      scrollY: Math.round(scrollY),
+      maxScroll: Math.round(document.documentElement.scrollHeight - vh),
+      docH: document.documentElement.scrollHeight,
+      fontsReady: document.fonts.status,
+      lines: [...document.querySelectorAll('.contact__big .ln__in')].map(el => {
+        let top = 0;
+        for (let n = el; n; n = n.offsetParent) top += n.offsetTop;
+        return {
+          text: el.textContent.trim(),
+          viewTop: Math.round(top - scrollY),
+          p: el.style.getPropertyValue('--p'),
+          op: +getComputedStyle(el).opacity,
+        };
+      }),
     };
   });
 
   check(state.btnVisible, '邮箱按钮此时确实在视口里');
   const faded = state.lines.filter(l => l.op < 0.99);
   check(faded.length === 0, '按钮可见时，联系区标题已经完全显示（不是半透明）',
-    faded.length ? faded.map(f => `${f.text}:${f.op.toFixed(2)}`).join(' ') : state.lines.map(l => l.text.slice(0, 6)).join(' / '));
+    faded.length
+      // 失败时把几何一起打出来，否则只知道"0.99"这个数字，没法判断是布局漂了还是动画没跑完
+      ? faded.map(f => `${f.text}:${f.op.toFixed(2)}`).join(' ')
+        + ` ［按钮top=${state.btnTop} 视口=${state.vh} 文档高=${state.docH} 最大滚动=${state.maxScroll}`
+        + ` 行顶=${state.lines.map(l => l.viewTop).join('/')} p=${state.lines.map(l => l.p).join('/')}`
+        + ` 字体=${state.fontsReady}］`
+      : state.lines.map(l => l.text.slice(0, 6)).join(' / '));
   await cta.close();
 }
 

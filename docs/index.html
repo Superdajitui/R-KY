@@ -419,12 +419,15 @@
     <div class="contact__glow" aria-hidden="true"></div>
     <div class="wrap">
       <p class="sec__label" data-reveal><i>06</i> 联系 / CONTACT</p>
-      <!-- data-scrub-to="0.78"：联系区是全站最后一块，后面没有多少滚动余量了。
-           值从 0.72 提到 0.78 是因为热爱区改成三行大图后页面变高，
-           "页面滚到底时元素能升到多高"跟着变了，0.72 下邮箱按钮露出时
-           标题第二行还停在 98% 透明度 —— 差一点点，但 CTA 不该是灰的。
-           这条由 test-scroll 的「按钮可见时标题必须已完全显示」盯着。 -->
-      <h2 class="contact__big" data-scrub="lines" data-scrub-to="0.78">想更了解我？<br><em>往下看</em>，有邮箱。</h2>
+      <!-- data-scrub-to="0.84"：联系区是全站最后一块，后面没有多少滚动余量。
+           这个值调过三次（默认 → 0.72 → 0.78 → 0.84），每次都是被
+           test-scroll 的「按钮可见时标题必须已完全显示」逼出来的：
+           页面总高一变，"滚到底时元素能升到多高"就跟着变，标题就可能
+           在按钮露出时还差一点点（实测线上 0.99）。
+           按实测几何：邮箱按钮露出时第二行在 0.63×vh 处，
+           取 0.84 留出约 0.2×vh（180px）余量，页面高度再怎么变都不会踩线，
+           同时 reveal 依然看得见（从 0.98 到 0.84 有一小段行程）。 -->
+      <h2 class="contact__big" data-scrub="lines" data-scrub-to="0.84">想更了解我？<br><em>往下看</em>，有邮箱。</h2>
 
       <div class="contact__row" data-scrub="rise">
         <a class="btn btn--neon btn--big" href="mailto:superdajitui@outlook.com" data-cursor="lg">
