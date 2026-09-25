@@ -39,7 +39,7 @@ const svg = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
           fill="#8a8d92" letter-spacing="14">KERRY R</text>
 
     <text x="72" y="512" font-size="30" fill="#c6c9cd">
-      把想法做成<tspan fill="#d2ff00" font-weight="700">能跑的东西</tspan>。
+      安静的人，<tspan fill="#d2ff00" font-weight="700">做扎实的事</tspan>。
     </text>
 
     <text x="72" y="576" font-size="21" fill="#5c5f64" letter-spacing="3">
@@ -53,8 +53,13 @@ const svg = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
 
 // 人物抠像放到右侧。注意合成图不能超出画布，否则 sharp 直接报错，
 // 所以先把高度卡死在画布高度内，再按原始比例算宽度。
+//
+// 路径是 src/ 不是 assets/img/：抠好的原图属于构建素材，不随站点发布，
+// 早就挪到 src/ 了。这里一直没跟着改，于是 og.jpg 再也生成不出来，
+// 线上那张分享图一直是旧的（改了标语也不会变）—— 这种"工具坏了但没人发现"
+// 的问题最隐蔽，因为产物文件还在，看起来一切正常。
 const PORTRAIT_H = H;
-const portrait = await sharp('assets/img/portrait-1400.webp')
+const portrait = await sharp('src/portrait-1400.webp')
   .resize({ height: PORTRAIT_H, fit: 'inside' })
   .toBuffer();
 const pm = await sharp(portrait).metadata();
