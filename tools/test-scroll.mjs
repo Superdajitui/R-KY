@@ -334,10 +334,20 @@ console.log('\n════ 跑马灯：首尾相接、全程不露白 ═══
    谁换了一张别的比例，构图就散了。
 */
 {
-  const figs = await page.evaluate(async () => {
+  // 先滚过去把懒加载的图催出来，并【等它们真的加载完】再断言。
+  // 原来只 wait 600ms —— 网络稍慢时第三张就会超时，报出"照片没加载出来"
+  // 这种假故障（本地快，线上慢，典型的环境差异）。
+  await page.evaluate(async () => {
     const box = document.querySelector('#passions');
     box.scrollIntoView({ block: 'start', behavior: 'instant' });
-    await new Promise(r => setTimeout(r, 600));
+    await new Promise(r => setTimeout(r, 400));
+  });
+  await page.waitForFunction(
+    () => [...document.querySelectorAll('#passions img')].every(i => i.complete && i.naturalWidth > 0),
+    { timeout: 20000 }).catch(() => {});
+
+  const figs = await page.evaluate(async () => {
+    const box = document.querySelector('#passions');
     return [...box.querySelectorAll('.passion__figure')].map(f => {
       const img = f.querySelector('img');
       const fr = f.getBoundingClientRect();
