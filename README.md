@@ -342,6 +342,7 @@ node tools/compose-hero.mjs                 # 加回头盔
 ```bash
 node tools/extract-chars.mjs     # 扫描页面，提取用到的字符 → tools/charset.txt
 node tools/build-cjk-font.mjs    # 按字符集生成子集 → assets/fonts/
+# 等价于 npm run font:chars / npm run font:build
 ```
 
 > ⚠️ **加了新文案之后要重跑这两个脚本**，否则新出现的汉字不在子集里，

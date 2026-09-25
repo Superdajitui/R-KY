@@ -20,7 +20,10 @@
     "cutout": "node tools/cutout.mjs \"%USERPROFILE%/Desktop/证件照.jpg\" src",
     "optimize": "node tools/optimize.mjs src/helmet-raw.webp src --name=helmet --sizes=800",
     "preview": "node tools/preview.mjs",
-    "test:welcome": "node tools/test-welcome.mjs"
+    "test:welcome": "node tools/test-welcome.mjs",
+    "test:font": "node tools/check-font-weight.mjs",
+    "font:chars": "node tools/extract-chars.mjs",
+    "font:build": "node tools/build-cjk-font.mjs"
   },
   "devDependencies": {
     "@fontsource/anton": "^5.3.0",
