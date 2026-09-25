@@ -297,8 +297,6 @@
      --------------------------------------------------------- */
   $('#year').textContent = new Date().getFullYear();
 
-  // 注：人物图上的悬停效果已改为 WebGL 流体，见 assets/js/fluid.js
-
   // 占位链接不要跳走
   $$('a[href="#"]').forEach(a => a.addEventListener('click', e => e.preventDefault()));
 })();

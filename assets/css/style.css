@@ -276,26 +276,14 @@ em{font-style:normal}
 /* 注意这里的 z-index 不能省。
    .hero__halo 是「定位元素 + z-index:0」，而静态定位的 <picture> 属于更低层的
    绘制层 —— 不给 picture 提升层级的话，那层半透明霓虹绿会直接糊在脸上，
-   变成"光打在脸上"而不是"光在人物身后"。
-   （重构流体 canvas 时就是漏了这一条，把原来的 img{z-index:1} 弄丢了。） */
+   变成"光打在脸上"而不是"光在人物身后"。 */
 .hero__portrait picture{
   display:block;width:100%;height:100%;
   position:relative;z-index:1;
 }
-.hero__portrait .hero__img{display:block;width:100%;height:100%}
-.hero__portrait .hero__img{object-fit:contain}
+.hero__portrait .hero__img{display:block;width:100%;height:100%;object-fit:contain}
 
-/* 流体 canvas 叠在静态图【之上】，而不是替换它 —— 这一点很关键：
-   万一 WebGL 在某块显卡/驱动上能初始化却画不出东西，静态图还在底下兜着，
-   照片不会凭空消失。canvas 只在鼠标悬停时淡入。
-   （早先的写法是 is-webgl 就把 picture 隐藏掉，等于把所有风险都压在 WebGL 上。） */
-.hero__canvas{
-  position:absolute;inset:0;width:100%;height:100%;
-  z-index:1;display:none;opacity:0;pointer-events:none;
-  transition:opacity .3s var(--ease);
-}
-.hero__portrait.is-webgl .hero__canvas{display:block}
-.hero__portrait.is-fluid .hero__canvas{opacity:1}
+/* 人物背后的霓虹光晕。必须在 picture 之下（见上面的层级说明）。 */
 .hero__halo{
   position:absolute;left:50%;top:34%;translate:-50% -50%;
   width:82%;aspect-ratio:1;border-radius:50%;

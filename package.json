@@ -9,7 +9,7 @@
     "preview:docs": "node tools/serve.mjs 4322 --root=docs --prefix=/R-KY",
     "build": "node tools/build.mjs",
     "test:subpath": "node tools/test-subpath.mjs",
-    "test:fluid": "node tools/test-fluid.mjs",
+    "test:hero": "node tools/test-hero.mjs",
     "verify:live": "node tools/verify-live.mjs",
     "peek:live": "node tools/peek-live.mjs",
     "compose": "node tools/compose-hero.mjs",
