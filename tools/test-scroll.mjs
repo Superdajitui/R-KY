@@ -305,6 +305,58 @@ const rescued = await sp.evaluate(async () => {
 check(rescued, '加上 .scrub-off 兜底后全部内容立刻恢复可见');
 await sp.close();
 
+/* ══════════════════ 5. 标题行不许折行 ══════════════════ */
+/*
+   逐行揭示用的是"外层 overflow:hidden、内层推上来"的做法，
+   一行 = 一个裁切框。如果某个宽度下这行字太长而折成两行，
+   裁切框会跟着变高，动画区间也跟着翻倍，看起来就是一整块糊上去。
+   （内容最终不会丢，但那个宽度下的观感是坏的，而且很难注意到。）
+
+   分两档，理由不同：
+     ≥430px：必须单行。这个宽度以上排版是设计过的，折行就是出了 bug。
+     <430px：窄手机上中文长标题本来就会自然折行，属于正常排版，
+             所以只报告、不判失败 —— 不能为了让检查变绿去把手机字号调小，
+             用户明确说过希望字大一点。
+
+   文案一改长就必须跑这条（真实案例：把「白天拆解系统」换成
+   「仿真、光圈、走线，」时，9 个字在 1100px 和 1001px 下折行了，
+   1440px 却是好的 —— 只看一个宽度根本发现不了）。
+*/
+console.log('\n════ 标题行不折行（多宽度）════');
+const STRICT = [1440, 1280, 1100, 1001, 900, 768, 520, 430];
+const SOFT = [390, 360];
+const wrapBad = [];
+const wrapSoft = [];
+
+for (const [tier, widths] of [['strict', STRICT], ['soft', SOFT]]) {
+  for (const w of widths) {
+    const p = await browser.newPage();
+    await p.setViewport({ width: w, height: 900 });
+    await p.goto(URL_BASE, { waitUntil: 'networkidle0', timeout: 60000 });
+    await sleep(1800);
+    const rows = await p.evaluate(() =>
+      [...document.querySelectorAll('.ln__in')].map(el => {
+        const lh = parseFloat(getComputedStyle(el).lineHeight) || 20;
+        return {
+          text: (el.textContent || '').trim(),
+          lines: +(el.offsetHeight / lh).toFixed(2),
+        };
+      }));
+    const bad = rows.filter(r => r.lines > 1.35);
+    if (bad.length) {
+      const msg = `${w}px: ${bad.map(b => `「${b.text}」${b.lines}行`).join(' ')}`;
+      (tier === 'strict' ? wrapBad : wrapSoft).push(msg);
+    }
+    await p.close();
+  }
+}
+
+check(wrapBad.length === 0, '桌面/平板宽度下大标题都不折行',
+  wrapBad.length ? wrapBad.join(' | ') : `${STRICT.length} 个宽度全部单行`);
+if (wrapSoft.length) {
+  console.log(`  · 窄手机（正常折行，不算失败）: ${wrapSoft.join(' | ')}`);
+}
+
 await browser.close();
 
 console.log(`\n${'─'.repeat(52)}`);

@@ -541,6 +541,17 @@ section{position:relative;scroll-margin-top:84px}
 .sec__title{
   font-family:var(--f-cn);font-weight:800;line-height:1.18;
   font-size:clamp(1.75rem,4.6vw,3.4rem);letter-spacing:-.01em;margin-bottom:3rem;
+  /* 中文标题只能在标点处断行，不许在词中间断。
+     默认行为会把「赛道、取景框，和一副耳机。」断成
+     「…和一副耳 / 机。」—— 「耳机」被劈成两半，很难看。
+     keep-all 之后断点只留在「、」「，」处，断出来是
+     「赛道、取景框，/ 和一副耳机。」
+     ⚠ overflow-wrap:break-word 是安全阀，不能省：
+     万一某行整行都没有标点又超宽，keep-all 会让它溢出，
+     而 .ln 是 overflow:hidden —— 溢出的字会被直接裁掉看不见。
+     有了 break-word，这种情况会退化成硬断，宁可断得难看也不能丢字。 */
+  word-break:keep-all;
+  overflow-wrap:break-word;
 }
 .sec__title em{color:var(--neon)}
 
@@ -706,6 +717,9 @@ html.js .skills__list li.is-in i{transform:scaleX(1)}
 .contact__big{
   font-family:var(--f-cn);font-weight:800;line-height:1.1;letter-spacing:-.02em;
   font-size:clamp(2rem,7vw,5rem);margin-bottom:2.8rem;
+  /* 同 .sec__title：中文只在标点处断行 */
+  word-break:keep-all;
+  overflow-wrap:break-word;
 }
 .contact__big em{color:var(--neon)}
 .contact__row{display:flex;flex-wrap:wrap;gap:1rem;justify-content:center}
