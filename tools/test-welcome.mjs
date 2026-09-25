@@ -85,6 +85,51 @@ const titleOpacity = await page.evaluate(() =>
   getComputedStyle(document.querySelector('.welcome__line > span')).opacity);
 check(titleOpacity === '1', '标题文字已完全显现', `opacity=${titleOpacity}`);
 
+/* ═══════════ 中文字体一致性 ═══════════
+   直接问浏览器「你这块文字实际用的是哪个字体」，
+   而不是靠肉眼看字形 —— 这是最硬的证据。
+   背景：中文字体没自托管时，Windows 用微软雅黑、iPhone 用苹方、
+   安卓用思源黑体，同一个镂空描边效果在各平台对不上。 */
+const client = await page.createCDPSession();
+await client.send('DOM.enable');
+await client.send('CSS.enable');
+const { root } = await client.send('DOM.getDocument');
+
+async function usedFonts(selector) {
+  const { nodeId } = await client.send('DOM.querySelector', { nodeId: root.nodeId, selector });
+  if (!nodeId) return [];
+  const { fonts } = await client.send('CSS.getPlatformFontsForNode', { nodeId });
+  return fonts || [];
+}
+
+console.log('\n════ 中文字体 ════');
+const fontChecks = [
+  ['开场页大字（镂空那行）', '.welcome__line--outline > span'],
+  ['开场页大字（实心那行）', '.welcome__line > span'],
+  ['开场页四周小字', '.welcome__roles'],
+];
+let allNoto = true;
+for (const [label, sel] of fontChecks) {
+  const fonts = await usedFonts(sel);
+  const names = fonts.map(f => `${f.familyName}(${f.glyphCount}${f.isCustomFont ? ',自定义' : ',系统'})`).join(' + ');
+  const ok = fonts.some(f => f.familyName.includes('Noto Sans SC') && f.isCustomFont);
+  if (!ok) allNoto = false;
+  console.log(`  ${ok ? '✓' : '✗'} ${label}: ${names || '（取不到）'}`);
+}
+check(allNoto, '中文全部走自托管字体（各平台渲染一致）');
+
+// 字体确实被下载了，且没有 404
+const fontLoaded = await page.evaluate(() =>
+  document.fonts.check('900 100px "Noto Sans SC"', '欢迎来到我的个人网站'));
+check(fontLoaded, 'Noto Sans SC 子集已加载且覆盖所需字形');
+
+const fontRes = await page.evaluate(() =>
+  performance.getEntriesByType('resource')
+    .filter(r => r.name.includes('noto-sans-sc'))
+    .map(r => ({ name: r.name.split('/').pop(), size: Math.round(r.transferSize / 1024) })));
+console.log(`  字体请求: ${fontRes.map(f => `${f.name} ${f.size}KB`).join(', ') || '（无）'}`);
+check(fontRes.length > 0 && fontRes[0].size > 0, '字体文件网络请求正常');
+
 /* ═══════════ 阶段二：下滑揭幕 ═══════════ */
 console.log('\n════ 阶段二：下滑进入主页 ════');
 

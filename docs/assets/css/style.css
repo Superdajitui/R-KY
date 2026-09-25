@@ -13,6 +13,20 @@
 @font-face{font-family:'Inter';src:url('../fonts/inter-latin-800-normal.woff2') format('woff2');font-weight:800;font-style:normal;font-display:swap}
 @font-face{font-family:'Inter';src:url('../fonts/inter-latin-900-normal.woff2') format('woff2');font-weight:900;font-style:normal;font-display:swap}
 
+/* 中文字体：必须自托管，否则三个平台各用各的。
+   Windows 命中微软雅黑、iPhone 命中苹方、安卓回退到思源黑体 ——
+   字形本来就不同，同一个「镂空描边」效果在手机上会和电脑上对不上。
+   这是子集字体，只含本站实际用到的 568 个字符（见 tools/build-cjk-font.mjs），
+   完整思源黑体要 5MB，子集只要 158KB。
+   可变字体，400~900 全字重一个文件搞定。 */
+@font-face{
+  font-family:'Noto Sans SC';
+  src:url('../fonts/noto-sans-sc-subset.woff2') format('woff2');
+  font-weight:400 900;
+  font-style:normal;
+  font-display:swap;
+}
+
 /* ---------- 设计令牌 ---------- */
 :root{
   --ink:#111112;          /* 绝对黑，整个站的底色 */
@@ -25,8 +39,11 @@
   --mute-2:#5c5f64;
 
   --f-display:'Anton','Inter',system-ui,sans-serif;
-  --f-body:'Inter','Microsoft YaHei','PingFang SC','Hiragino Sans GB','Noto Sans SC',system-ui,sans-serif;
-  --f-cn:'Inter','Microsoft YaHei','PingFang SC',system-ui,sans-serif;
+  /* 中文字体放在 Inter 之后：拉丁字母用 Inter，汉字落到 Noto Sans SC。
+     后面的系统字体只是兜底 —— 子集里没有的生僻字会走它们，
+     总比显示成方框好。 */
+  --f-body:'Inter','Noto Sans SC','Microsoft YaHei','PingFang SC','Hiragino Sans GB',system-ui,sans-serif;
+  --f-cn:'Inter','Noto Sans SC','Microsoft YaHei','PingFang SC',system-ui,sans-serif;
 
   --pad:clamp(1.25rem,4vw,4.5rem);
   --ease:cubic-bezier(.22,1,.36,1);
@@ -254,9 +271,16 @@ body.is-ready .welcome__label{opacity:1;transform:none}
 body.is-ready .welcome__line > span{transform:none}
 body.is-ready .welcome__line:nth-child(2) > span{transition-delay:.13s}
 .welcome__line--outline > span{
-  color:transparent;
+  /* 镂空描边的做法：用【背景色】填充 + 先描边后填充。
+     如果填 transparent（常规写法），描边会把每个笔画的轮廓都画出来 ——
+     而思源黑体是由重叠笔画拼合的，字内部会出现一道道交叉线。
+     填充成背景色后，paint-order 让填充盖在上面，交叉线就被遮住了，
+     只剩字形外缘那一圈描边。
+     注意：这招只适用于纯色背景；首屏那个压在照片上的「任恺昱」
+     不能这么干，否则填充会挡住照片。 */
+  color:var(--neon);
   -webkit-text-stroke:2px var(--ink);
-  text-stroke:2px var(--ink);
+  paint-order:stroke fill;
 }
 
 .welcome__foot{
