@@ -369,13 +369,15 @@
     <div class="contact__glow" aria-hidden="true"></div>
     <div class="wrap">
       <p class="sec__label" data-reveal><i>06</i> 联系 / CONTACT</p>
-      <h2 class="contact__big" data-scrub="lines">一起做点<br><em>好玩的</em>东西？</h2>
+      <!-- data-scrub-to="0.72"：联系区是全站最后一块，后面没有多少滚动余量了。
+           用默认区间的话，邮箱按钮都露出来了标题还在 85% 透明度 ——
+           CTA 自己半透明，等于拆自己的台。0.72 让它在视口 72% 处就显示完。 -->
+      <h2 class="contact__big" data-scrub="lines" data-scrub-to="0.72">想更了解我？<br><em>往下看</em>，有邮箱。</h2>
 
       <div class="contact__row" data-scrub="rise">
         <a class="btn btn--neon btn--big" href="mailto:superdajitui@outlook.com" data-cursor="lg">
           <span>superdajitui@outlook.com</span>
         </a>
-        <a class="btn btn--ghost btn--big" href="#" data-cursor="lg"><span>GitHub ↗</span></a>
       </div>
 
       <p class="contact__note" data-scrub="rise" data-scrub-delay="0.06">

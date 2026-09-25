@@ -36,6 +36,23 @@ const SLOTS = {
     render: (text) => `<h2 class="sec__title">${text}</h2>`,
   },
 
+  // 联系板块的大标题：整幅居中，宽度宽松，但手机上仍不宜超过 ~9 字
+  contact: {
+    file: 'contact-options',
+    intro: '联系板块大标题',
+    candidates: [
+      { tag: '当前线上', text: '一起做点|*好玩的*东西？', note: '现在挂着的这句，列在这里做对照' },
+      { tag: '候选 A', text: '想更了解我？|下面有个*邮箱*。', note: '最贴近你的原意，只把「点击下方」放软成「下面有个」' },
+      { tag: '候选 B', text: '还想聊两句？|*邮箱*就在下面。', note: '更含蓄，不催不劝' },
+      { tag: '候选 C', text: '有话想说？|*写信*给我就好。', note: '最委婉；把发邮件说成「写信」，温度高一些' },
+      { tag: '候选 D', text: '想认识一下？|*往下看*，有邮箱。', note: '带一点引导动作，但不生硬' },
+      { tag: '候选 E', text: '还想聊点什么？|*邮箱*一直开着。', note: '表达「随时都在」，不给人压力' },
+      { tag: '候选 F', text: '想找我？|下面有*邮箱*，不用客气。', note: '最口语、最放松的一句' },
+    ],
+    body: (inner) => `<div class="wrap demo-center">${inner}</div>`,
+    render: (text) => `<h2 class="contact__big">${text}</h2>`,
+  },
+
   // 首屏左下角那句标语：字号小、位置在底部，受底部一行宽度约束
   tagline: {
     file: 'tagline-options',
@@ -88,6 +105,10 @@ const html = (items) => `<!DOCTYPE html>
      预览页永远不会有 is-hero，不顶回来的话所有候选文字都是隐形的 ——
      第一版就是这样，图上只剩标签，一条文案都看不见。 */
   .demo-foot{position:static;left:auto;right:auto;bottom:auto;padding:0;opacity:1!important}
+  /* 联系板块的标题在页面里是靠 .contact{text-align:center} 居中的，
+     预览里得自己补上，否则会左对齐，看不出真实观感 */
+  .demo-center{text-align:center}
+  .demo-center .contact__big{margin-bottom:0}
 </style></head><body>
 <div class="sheet">
 ${items.map(it => `  <div class="item">

@@ -459,6 +459,47 @@ check(clippedRatio < 0.9, '注入裁切式做法后检查能抓到（证明这�
   `裁切后 ${clipped.h}px / 完整 ${full.h}px = ${(clippedRatio * 100).toFixed(0)}%`);
 await cp.close();
 
+/* ══════════════════ 6b. 行动号召可见时必须已经显示完 ══════════════════ */
+/*
+   联系区是页面最后一块，后面的滚动余量最少，所以它的显示进度天然最晚。
+   实测过：邮箱按钮已经出现在视口里了，标题第二行还停在 85% 透明度 ——
+   CTA 自己半透明，等于拆自己的台。用户当时的要求正是"放大、显眼一些"。
+
+   修法是给它单独的区间（data-scrub-to），让它早点显示完。
+   这条检查盯的就是"按钮可见时，标题必须已经完全显示"。
+*/
+console.log('\n════ 行动号召（联系区）可见时已完全显示 ════');
+{
+  const cta = await browser.newPage();
+  await cta.setViewport({ width: 1440, height: 900 });
+  await cta.goto(URL_BASE, { waitUntil: 'networkidle0', timeout: 60000 });
+  await sleep(2600);
+
+  // 滚到"邮箱按钮刚露出来"的位置
+  await cta.evaluate(() => {
+    const btn = document.querySelector('.contact__row');
+    window.scrollTo(0, btn.getBoundingClientRect().top + scrollY - innerHeight + 120);
+  });
+  await sleep(1500);
+
+  const state = await cta.evaluate(() => {
+    const btn = document.querySelector('.contact__row').getBoundingClientRect();
+    return {
+      btnVisible: btn.top < innerHeight && btn.bottom > 0,
+      lines: [...document.querySelectorAll('.contact__big .ln__in')].map(el => ({
+        text: el.textContent.trim(),
+        op: +getComputedStyle(el).opacity,
+      })),
+    };
+  });
+
+  check(state.btnVisible, '邮箱按钮此时确实在视口里');
+  const faded = state.lines.filter(l => l.op < 0.99);
+  check(faded.length === 0, '按钮可见时，联系区标题已经完全显示（不是半透明）',
+    faded.length ? faded.map(f => `${f.text}:${f.op.toFixed(2)}`).join(' ') : state.lines.map(l => l.text.slice(0, 6)).join(' / '));
+  await cta.close();
+}
+
 /* ══════════════════ 7. 标题行不许折行 ══════════════════ */
 /*
    一行 = 一个行容器。如果某个宽度下这行字太长而折成两行，

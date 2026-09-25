@@ -725,7 +725,12 @@ html.js .skills__list li.is-in i{transform:scaleX(1)}
 .contact .sec__label{justify-content:center}
 .contact__big{
   font-family:var(--f-cn);font-weight:800;line-height:1.1;letter-spacing:-.02em;
-  font-size:clamp(2rem,7vw,5rem);margin-bottom:2.8rem;
+  /* 联系区是全站最后一句、也是唯一的行动号召，字号刻意比 .sec__title 大一档，
+     让人滚到底时"砸"一下。上限从 5rem 提到 7rem（1440 下 112px）。
+     放大的安全边界：最长那行「往下看，有邮箱。」8 个字，
+     8 × 112 = 896px < 内容宽 1325px；390 手机下 8 × 37 = 296px < 可用 350px。
+     tools/test-scroll.mjs 的多宽度折行检查会盯着这条，改文案必须重跑。 */
+  font-size:clamp(2.2rem,9.5vw,7rem);margin-bottom:2.8rem;
   /* 同 .sec__title：中文只在标点处断行 */
   word-break:keep-all;
   overflow-wrap:break-word;

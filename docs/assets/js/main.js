@@ -106,14 +106,23 @@
     const d = opts.delay || 0;
     scrubEls.push({
       el,
-      from: preset.from - d,
-      to: preset.to - d,
+      // data-scrub-from / data-scrub-to 可以覆盖预设区间（单位是 vh 倍数）。
+      // 用不着给每个区块都调，只有"必须早点显示完"的地方才需要 ——
+      // 联系区那句 CTA 就是：按钮都露出来了它还在半透明，等于自己拆自己的台。
+      from: (opts.from ?? preset.from) - d,
+      to: (opts.to ?? preset.to) - d,
       blur: opts.preset === 'blur',
       top: 0, h: 1,
       target: 0, cur: 0,
       done: false, active: false,
     });
   }
+
+  // 从元素上读区间覆盖值（没写就是 undefined，交给预设）
+  const rangeOf = (el) => ({
+    from: el.dataset.scrubFrom !== undefined ? parseFloat(el.dataset.scrubFrom) : undefined,
+    to: el.dataset.scrubTo !== undefined ? parseFloat(el.dataset.scrubTo) : undefined,
+  });
 
   const clamp01 = v => (v < 0 ? 0 : v > 1 ? 1 : v);
 
@@ -359,10 +368,13 @@
   }
 
   function buildScrub() {
-    // 标题行：拆行后每一行单独作为一个 scrub 目标
+    // 标题行：拆行后每一行单独作为一个 scrub 目标。
+    // 区间覆盖要写在标题容器上并由每一行继承 —— 行是拆出来的，
+    // 没法单独给某一行加属性。
     $$('[data-scrub="lines"]').forEach(el => {
+      const range = rangeOf(el);
       for (const inner of splitLines(el)) {
-        addScrub(inner, { preset: 'lines' });
+        addScrub(inner, { preset: 'lines', ...range });
       }
     });
 
@@ -373,6 +385,7 @@
       addScrub(el, {
         preset: kind,
         delay: parseFloat(el.dataset.scrubDelay) || 0,
+        ...rangeOf(el),
       });
     });
 
