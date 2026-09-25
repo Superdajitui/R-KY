@@ -58,6 +58,8 @@ const s = await page.evaluate(() => {
     ready: document.body.classList.contains('is-ready'),
     ogImage: document.querySelector('meta[property="og:image"]')?.content || '',
     canonical: document.querySelector('link[rel="canonical"]')?.href || '',
+    // 联络邮箱：这是访客唯一能联系到你的入口，值得每次上线都盯一眼
+    mailto: document.querySelector('#contact a[href^="mailto:"]')?.getAttribute('href') || '',
     imgLoaded: !!img?.complete && img.naturalWidth > 0,
     imgSrc: (img?.currentSrc || '').split('/').pop(),
     wordOpacity: word ? getComputedStyle(word).opacity : '0',
@@ -85,6 +87,7 @@ check(s.fontInter, 'Inter 字体（正文）已加载');
 check(s.cnStroke && s.cnStroke !== '0px', '中文描边效果生效', s.cnStroke);
 check(s.ogImage.startsWith('https://'), 'og:image 是绝对地址', s.ogImage);
 check(s.canonical.startsWith('https://'), 'canonical 是绝对地址', s.canonical);
+check(s.mailto === 'mailto:superdajitui@outlook.com', '联络邮箱正确', s.mailto || '（没找到）');
 
 /* ---------- 开场页 ---------- */
 const wel = await page.evaluate(() => {
@@ -149,11 +152,13 @@ await sleep(1200);
 const s404 = await p404.evaluate(() => {
   const code = document.querySelector('.nf__code');
   const btn = document.querySelector('.nf__actions a');
+  const mail = document.querySelector('a[href^="mailto:"]');
   return {
     code: code?.textContent.trim() || '无',
     color: code ? getComputedStyle(code).color : '',
     radius: btn ? getComputedStyle(btn).borderRadius : '',
     home: btn ? btn.href : '',
+    mail: mail ? mail.getAttribute('href') : '',
   };
 });
 console.log('\n404 页面');
@@ -161,6 +166,7 @@ check(s404.code === '404', '显示 404 内容', s404.code);
 check(s404.color.includes('210, 255, 0'), '霓虹绿样式生效');
 check(s404.radius === '100px', '按钮样式生效（style.css 已加载）');
 check(s404.home === URL_BASE, '「回到首页」指向站点根');
+check(s404.mail === 'mailto:superdajitui@outlook.com', '联络邮箱正确', s404.mail || '（没找到）');
 await p404.screenshot({ path: 'tools/shots/live-404.png' });
 await p404.close();
 
