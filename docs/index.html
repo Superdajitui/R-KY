@@ -31,11 +31,13 @@
 <!-- 开场页第一眼就是中文大字，中文字体必须一起预加载，
      否则会先闪一下系统字体再换过来 -->
 <link rel="preload" href="assets/fonts/noto-sans-sc-subset.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="assets/css/style.css?v=23e715ca">
+<link rel="stylesheet" href="assets/css/style.css?v=6f88a6e6">
 <noscript><style>
-  /* 无脚本兜底：不让预加载遮罩和欢迎页挡住内容，一切静态可见 */
+  /* 无脚本兜底：不让预加载遮罩和欢迎页挡住内容，一切静态可见。
+     底部三件套和 KERRY 的每个字母都是各自入场的，漏一个就会缺一块。 */
   .loader,.cursor,.grain,.progress,.welcome{display:none!important}
   .hero__eyebrow,.hero__word,.hero__portrait,.hero__foot{opacity:1!important}
+  .hero__tagline,.hero__meta > *,.hero__word--top > span{opacity:1!important;transform:none!important}
 </style></noscript>
 <link rel="canonical" href="https://superdajitui.github.io/R-KY/">
 <meta property="og:url" content="https://superdajitui.github.io/R-KY/">
@@ -145,7 +147,9 @@
       </p>
 
       <h1 class="hero__title">
-        <span class="hero__word hero__word--top">KERRY</span>
+        <!-- 拆成单个字母，逐字上浮进场（每字一个 --i 用于错开）。
+             只在入场时播一次，用的是 transform + opacity，播完就没有开销。 -->
+        <span class="hero__word hero__word--top"><span style="--i:0">K</span><span style="--i:1">E</span><span style="--i:2">R</span><span style="--i:3">R</span><span style="--i:4">Y</span></span>
 
         <span class="hero__word hero__word--bottom">
           <span class="hero__cn" data-text="任恺昱">任恺昱</span>
@@ -454,6 +458,6 @@
   </div>
 </footer>
 
-<script src="assets/js/main.js?v=21720283"></script>
+<script src="assets/js/main.js?v=6f6e8c8a"></script>
 </body>
 </html>

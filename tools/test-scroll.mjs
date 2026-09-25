@@ -504,6 +504,27 @@ const svh = await mp.evaluate(() => {
 check(svh.found && /svh$/.test(svh.value),
   'svh 覆盖段可被解析（手机上人物高度用 svh，不是 vh）',
   svh.found ? `--hero-portrait-h: ${svh.value}（浏览器支持 svh: ${svh.supports}）` : '✗ 没找到 @supports (height:100svh) 里的覆盖规则');
+
+// 手机首屏四周的小字不能太小。
+// 用户提过两次"字太小"：一次是开场页四周，一次是首屏（实测只有 9.9~11.2px）。
+// 手机视口窄、观看距离近，这些字低于 12px 就偏小了，所以定一条下限守着。
+const typeScale = await mp.evaluate(() => {
+  const px = sel => {
+    const el = document.querySelector(sel);
+    return el ? +parseFloat(getComputedStyle(el).fontSize).toFixed(2) : 0;
+  };
+  return {
+    eyebrow: px('.hero__eyebrow'),
+    badge: px('.hero__badge'),
+    scroll: px('.hero__scroll'),
+    tagline: px('.hero__tagline'),
+  };
+});
+const tooSmall = Object.entries(typeScale).filter(([, v]) => v < 12);
+check(tooSmall.length === 0, '手机首屏四周的文字都不小于 12px',
+  tooSmall.length
+    ? tooSmall.map(([k, v]) => `${k}=${v}px`).join(' ')
+    : Object.entries(typeScale).map(([k, v]) => `${k} ${v}`).join(' / '));
 check(mob.bars === 0 && mob.lines === 0, '手机上进度条与标题都到位',
   `条 ${mob.bars} / 行 ${mob.lines}`);
 await mp.close();

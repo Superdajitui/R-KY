@@ -843,18 +843,46 @@ html.js [data-reveal].is-in{opacity:1;transform:none}
       否则文字会在一个隐形的父容器里做动画，永远看不见。
    2. 触发条件是 body.is-hero 而不是 is-ready —— 首屏一开始被欢迎页盖着，
       用 is-ready 的话动画会在背后白白播完，滑上来时已经静止了。 */
+/* 注意这里【只把 --bottom 那个词设为透明】：
+   KERRY 现在是逐个字母入场的，父层不能一起透明 ——
+   父层 opacity:0 的话，子字母动画到 1 也还是看不见（父层透明度会乘上去）。 */
 html.js .hero__eyebrow,
-html.js .hero__word,
-html.js .hero__portrait,
-html.js .hero__foot{opacity:0}
+html.js .hero__word--bottom,
+html.js .hero__portrait{opacity:0}
+html.js .hero__foot{opacity:1}          /* 底部改成三件套各自入场，见下 */
+html.js .hero__tagline,
+html.js .hero__meta > *{opacity:0}
+
 body.is-hero .hero__eyebrow{opacity:0;animation:fadeUp .9s var(--ease) .1s forwards}
-body.is-hero .hero__word--top{opacity:0;animation:nameIn 1.1s var(--ease) .25s forwards}
-body.is-hero .hero__word--bottom{opacity:0;animation:nameIn 1.1s var(--ease) .4s forwards}
-body.is-hero .hero__portrait{opacity:0;animation:portraitIn 1.3s var(--ease) .3s forwards}
-body.is-hero .hero__foot{opacity:0;animation:fadeUp .9s var(--ease) .7s forwards}
+
+/* KERRY：逐字上浮，一个字比一个字晚 70ms。
+   字母是 inline-block 的 span，所以 transform 对它们有效。
+   父层 .hero__word--top 自己【不再播动画】—— 它的 transform 要留给
+   首屏退场（--hero-p 那套），父子各用各的，互不打架。 */
+.hero__word--top > span{display:inline-block;opacity:0;transform:translate3d(0,.42em,0)}
+body.is-hero .hero__word--top > span{
+  animation:letterUp .95s cubic-bezier(.16,1,.3,1) forwards;
+  animation-delay:calc(.22s + var(--i, 0) * .07s);
+}
+/* 任恺昱：比 KERRY 稍晚落定；缓动换成 expo-out，收尾更稳 */
+body.is-hero .hero__word--bottom{opacity:0;animation:nameIn 1.15s cubic-bezier(.16,1,.3,1) .5s forwards}
+/* 人物：同样 expo-out —— 前段快、后段极慢，看起来像"压下去再稳稳停住" */
+body.is-hero .hero__portrait{opacity:0;animation:portraitIn 1.45s cubic-bezier(.16,1,.3,1) .34s forwards}
+/* 底部三件套依次上浮：标语 → 开放合作 → 向下滚动 */
+body.is-hero .hero__tagline{animation:fadeUp .85s var(--ease) .62s forwards}
+body.is-hero .hero__meta > *:nth-child(1){animation:fadeUp .85s var(--ease) .76s forwards}
+body.is-hero .hero__meta > *:nth-child(2){animation:fadeUp .85s var(--ease) .9s forwards}
+/* 光晕缓慢呼吸。只有一层，且只动 transform + opacity，合成器就能跑完；
+   手机上它的 blur 已经去掉，是一张纯 radial-gradient，非常便宜。 */
+.hero__halo{animation:breathe 7.5s ease-in-out infinite}
+@keyframes breathe{
+  0%,100%{transform:scale(1);opacity:.82}
+  50%{transform:scale(1.07);opacity:1}
+}
+@keyframes letterUp{from{opacity:0;transform:translate3d(0,.42em,0)}to{opacity:1;transform:none}}
 @keyframes fadeUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
-@keyframes nameIn{from{opacity:0;transform:translateY(38px) scale(.96)}to{opacity:1;transform:none}}
-@keyframes portraitIn{from{opacity:0;transform:translateY(46px) scale(.97)}to{opacity:1;transform:none}}
+@keyframes nameIn{from{opacity:0;transform:translateY(34px) scale(.975)}to{opacity:1;transform:none}}
+@keyframes portraitIn{from{opacity:0;transform:translateY(46px) scale(.94)}to{opacity:1;transform:none}}
 
 /* ============================================================
    滚动驱动动效（scrub）
@@ -974,7 +1002,13 @@ html.js .contact__glow{
   }
   .nav__links,.nav__cta{display:none}
   .nav__burger{display:block}
-  .hero__eyebrow{top:5.25rem;letter-spacing:.2em;font-size:.62rem}
+  /* 首屏四周这几处小字在手机上原来只有 9.9~11.2px，偏小。
+     手机上视口窄、观看距离近，正文级信息不该低于 12px，
+     所以整体提一档（标签 +26%、徽章与滚动提示 +20%）。 */
+  .hero__eyebrow{top:5.25rem;letter-spacing:.2em;font-size:.78rem}
+  .hero__badge{font-size:.845rem;padding:.5rem 1rem}
+  .hero__scroll{font-size:.82rem}
+  .hero__tagline{font-size:1.16rem}
   .hero__word--top{font-size:clamp(3.2rem,21vw,9rem)}
   .hero__word--bottom{font-size:clamp(2.4rem,16vw,7rem)}
   /* 描边宽度是目标可见粗细的两倍（内半会被填充盖住），
@@ -1040,8 +1074,13 @@ html.js .contact__glow{
   html.js [data-reveal]{opacity:1;transform:none}
   html.js .hero__eyebrow,
   html.js .hero__word,
-  html.js .hero__portrait,
-  html.js .hero__foot{opacity:1}
+  html.js .hero__portrait{opacity:1}
+  /* 底部三件套、KERRY 的每个字母现在都是各自入场的，兜底也要覆盖到，
+     否则关掉动效后它们会停在 opacity:0 —— 动画可以没有，内容不能没有。 */
+  html.js .hero__tagline,
+  html.js .hero__meta > *,
+  html.js .hero__word--top > span{opacity:1;transform:none}
+  .hero__halo{animation:none;opacity:1}
   /* 欢迎页的文字揭示也一并跳过，直接显示 */
   .welcome__top,.welcome__label,.welcome__foot{opacity:1}
   .welcome__line > span{opacity:1;transform:none}

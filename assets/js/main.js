@@ -44,8 +44,15 @@
   /* ---------------------------------------------------------
      2. 入场动画结束后交还 transform 控制权，让视差能接管
         （CSS 动画优先级高于内联样式，不清理的话视差会被压住）
+        ---------------------------------------------------------
+        只列【自己带 transform 动画、同时又会被首屏退场改 transform】的元素：
+        .hero__word--bottom 和 .hero__portrait 需要清理；
+        .hero__eyebrow 顺手一起（无害）。
+        KERRY 不在这里 —— 它现在是逐个字母入场的，
+        动的是每个字母自己的 transform，父层的 transform 留给退场用，
+        两者互不干扰。底部三件套同理，只动 opacity，不需要清理。
      --------------------------------------------------------- */
-  $$('.hero__eyebrow, .hero__word, .hero__portrait, .hero__foot').forEach(el => {
+  $$('.hero__eyebrow, .hero__word--bottom, .hero__portrait').forEach(el => {
     el.addEventListener('animationend', () => {
       el.style.animation = 'none';
       el.style.opacity = '1';
