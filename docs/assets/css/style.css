@@ -696,30 +696,39 @@ section{position:relative;scroll-margin-top:84px}
 /* 偶数行把图片挪到左栏 */
 .passion:nth-child(even) .passion__figure{order:-1}
 .passion__body{min-width:0}
-.passion__idx{font-family:var(--f-display);font-size:.8rem;color:var(--mute-2);letter-spacing:.1em}
+.passion__idx{font-family:var(--f-display);font-size:.88rem;color:var(--mute-2);letter-spacing:.1em}
 .passion__title{
   font-family:var(--f-cn);font-weight:800;
-  font-size:clamp(1.6rem,3.2vw,2.4rem);
+  font-size:clamp(1.7rem,3.4vw,2.75rem);
   margin:.75rem 0 .3rem;transition:color .35s;
 }
 .passion:hover .passion__title{color:var(--neon)}
 .passion__en{
-  font-size:.64rem;letter-spacing:.24em;text-transform:uppercase;
+  font-size:.72rem;letter-spacing:.24em;text-transform:uppercase;
   color:var(--neon);font-weight:600;margin-bottom:1.1rem;
 }
-/* 正文比原来大一号：图片放大到半幅宽之后，.95rem 在 622px 的方块旁边太轻了 */
-.passion__text{font-size:1rem;color:var(--mute);line-height:2;text-wrap:pretty;max-width:44ch}
+/* 正文 1rem → 1.09rem：配合图片限宽 520，两侧重量才对得上。
+   行高从 2 收到 1.95 —— 字号变大后再用 2 会显得松。 */
+.passion__text{font-size:1.09rem;color:var(--mute);line-height:1.95;text-wrap:pretty;max-width:44ch}
 
 /* --- 照片 ---
    三张统一 1:1：摄影的相机在竖图里几乎满高，裁成横向比例会切到机身；
    赛车是竖图，1:1 正好装下整条速度线；音乐本身就是方的。
-   1:1 是唯一同时满足三张原图的比例。 */
+   1:1 是唯一同时满足三张原图的比例。
+
+   限宽 520px：不加的话图片会跟着栅格一路长到 644×644，
+   而文字块只有 644×239 —— 面积比 2.7 倍，看着就是"一边太大一边太小"。
+   同时把它推向所在栏的【外侧】：文字贴内、图片贴外，
+   中间自然让出一条呼吸带，两侧重量就匀了。 */
 .passion__figure{
   position:relative;overflow:hidden;
   aspect-ratio:1;
+  width:100%;max-width:520px;
   margin:0;background:var(--ink-2);
   transition:transform .7s var(--ease);
 }
+.passion:nth-child(odd) .passion__figure{justify-self:end}
+.passion:nth-child(even) .passion__figure{justify-self:start}
 .passion__figure img{
   display:block;width:100%;height:100%;object-fit:cover;
   /* 进入时略微放大并下沉，滚到位正好归位 —— "落定"的手感。
@@ -742,6 +751,14 @@ html.js .passion__body{
 html.js .passion__figure{
   transform:translate3d(calc((1 - var(--p,0)) * 28px * var(--dir)),0,0);
 }
+/* 文字这一侧再拆成四层，各自用不同的位移量收敛：
+   序号走得最远、正文最近，滚到位时四层同时归位 ——
+   一个 --p 就做出"依次落定"的层次感，不用再加动画时间轴，也就没有额外开销。
+   幅度刻意压得小（30/22/14/8px），是"层次"不是"乱飞"。 */
+html.js .passion__idx{transform:translate3d(0,calc((1 - var(--p,0)) * 30px),0)}
+html.js .passion__title{transform:translate3d(0,calc((1 - var(--p,0)) * 22px),0)}
+html.js .passion__en{transform:translate3d(0,calc((1 - var(--p,0)) * 14px),0)}
+html.js .passion__text{transform:translate3d(0,calc((1 - var(--p,0)) * 8px),0)}
 @media (hover:hover){
   /* 悬停放大必须把上面的位移一起写全，否则会覆盖掉、位置突跳 */
   .passion:hover .passion__figure{
@@ -1001,9 +1018,14 @@ html.js .contact__glow{
      横向靠拢的位移也一并去掉 —— 竖排再左右滑会很怪。 */
   .passion{grid-template-columns:1fr;gap:1.6rem}
   .passion .passion__figure,
-  .passion:nth-child(even) .passion__figure{order:0}
+  .passion:nth-child(even) .passion__figure{order:0;justify-self:stretch;max-width:none}
   html.js .passion__body,
   html.js .passion__figure{transform:none}
+  /* 竖排不需要横向分层收敛，文字那四层的位移也一并去掉 */
+  html.js .passion__idx,
+  html.js .passion__title,
+  html.js .passion__en,
+  html.js .passion__text{transform:none}
   .passion__text{max-width:56ch}
   .passions__grid{gap:3.5rem}
 }
