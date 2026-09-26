@@ -787,7 +787,9 @@
             y.toFixed(0) + 'px,0) scale(' + s.toFixed(3) + ')' });
           const a = el.animate([
             Object.assign(at(grow * .34), { opacity: 0 }),
-            Object.assign(at(grow * .62), { opacity: .5, offset: .42 }),
+            // 峰值给到 .75：深水层的渐变本身极淡（最重才 .11 白），
+            // 乘下来正好是一层几乎察觉不到的涌动
+            Object.assign(at(grow * .62), { opacity: .75, offset: .42 }),
             Object.assign(at(grow), { opacity: 0 }),
           ], { duration: 6200 + Math.random() * 4800,
             easing: 'cubic-bezier(.3,.5,.4,1)', fill: 'forwards' });
@@ -812,19 +814,22 @@
         // 视口里随机一点，四边留余量，免得波纹还没铺开就被裁掉
         const x = innerWidth * (.06 + Math.random() * .88);
         const y = innerHeight * (.08 + Math.random() * .84);
-        ring(x, y, 2200 + Math.random() * 1200, .5 + Math.random() * .45,
-          .40 + Math.random() * .18);
+        /* 大小和浓淡的跨度都刻意拉开（铺到 ⌀210~560，浓淡 .28~.62）。
+           全都差不多重的话，画面是一层平均的噪，没有主次；
+           有强有弱、有大有小，眼睛才有地方落 —— 层次感是"高级"最省力的来源。 */
+        ring(x, y, 2200 + Math.random() * 1200, .38 + Math.random() * .62,
+          .28 + Math.random() * .34);
         // 偶尔再来一滴挨着的，像先后落下的两个雨点
         if (Math.random() < .34) {
           setTimeout(() => {
             if (!live()) return;
             ring(x + (Math.random() - .5) * 190, y + (Math.random() - .5) * 150,
-              2000 + Math.random() * 1100, .42 + Math.random() * .35,
-              .34 + Math.random() * .16);
+              2000 + Math.random() * 1100, .34 + Math.random() * .5,
+              .24 + Math.random() * .28);
           }, 160 + Math.random() * 280);
         }
         scheduleIdle();
-      }, delay || (520 + Math.random() * 640));
+      }, delay || (650 + Math.random() * 780));
     }
 
     /* ── 鼠标移动：沿着路径留下波纹往外晕开 ──

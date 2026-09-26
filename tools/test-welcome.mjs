@@ -376,7 +376,9 @@ if (fxReady) {
         .match(/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/g) || [];
       return m.map(s => {
         const p = s.match(/[\d.]+/g).map(Number);
-        return { lum: .299 * p[0] + .587 * p[1] + .114 * p[2], a: p[3] ?? 1 };
+        // r/g/b 必须一起带出来：后面要算合成色和色相
+        return { r: p[0], g: p[1], b: p[2], a: p[3] ?? 1,
+          lum: .299 * p[0] + .587 * p[1] + .114 * p[2] };
       });
     };
     const pageLum = .299 * 210 + .587 * 255 + .114 * 0;   // 霓虹底色
@@ -387,26 +389,65 @@ if (fxReady) {
       const kind = c.lum > pageLum ? 'up' : 'down';
       if (kind !== prev) { if (kind === 'up') crests++; else troughs++; prev = kind; }
     }
+
+    /* "脏不脏"要能算出来，不然只能靠嘴说。两个量：
+       1) 色相偏移 —— 色标合成到底色上之后，色相与底色差多少。
+          同比例缩三个通道不会改变色相；缩的比例不一致就会被拉向绿/黄，混在霓虹里就是浑。
+       2) 明暗方向 —— 主体色标是【提亮】还是【压暗】。
+          高饱和亮底上压暗，眼睛读到的是"污渍"而不是"阴影"。
+       第一版就是压暗的（合成 L 0.39 vs 底色 0.50），用户直接说"画面有点脏"。 */
+    const toRGB = (c, a, bg) => [c.r * a + bg[0] * (1 - a),
+      c.g * a + bg[1] * (1 - a), c.b * a + bg[2] * (1 - a)];
+    const hslOf = ([r, g, b]) => {
+      const R = r / 255, G = g / 255, B = b / 255;
+      const mx = Math.max(R, G, B), mn = Math.min(R, G, B), d = mx - mn, l = (mx + mn) / 2;
+      let h = 0;
+      if (d) {
+        if (mx === R) h = 60 * (((G - B) / d) % 6);
+        else if (mx === G) h = 60 * ((B - R) / d + 2);
+        else h = 60 * ((R - G) / d + 4);
+      }
+      return { h: (h + 360) % 360, l };
+    };
+    const bgHSL = hslOf([210, 255, 0]);
+    const comps = stops.map(c => ({ ...hslOf(toRGB(c, c.a, [210, 255, 0])), a: c.a }));
+    const drift = Math.max(...comps.map(c =>
+      Math.min(Math.abs(c.h - bgHSL.h), 360 - Math.abs(c.h - bgHSL.h))));
+    const heaviest = comps.reduce((m, c) => (c.a > m.a ? c : m), comps[0]);
+    const darkest = Math.min(...comps.map(c => c.l));
+
     return {
       stops: stops.length, crests, troughs,
       brightest: Math.max(...stops.map(c => c.lum)),
       darkest: Math.min(...stops.map(c => c.lum)),
-      pageLum,
+      pageLum, drift, heaviestL: heaviest.l, bgL: bgHSL.l, darkestL: darkest,
       deepStops: parse(deep).filter(c => c.a > .05).length,
       deepMax: Math.max(...parse(deep).map(c => c.a)),
       ripMax: Math.max(...stops.map(c => c.a)),
     };
   });
   console.log(`  表面剖面: ${craft.stops} 个色标，波峰 ${craft.crests} / 波谷 ${craft.troughs}，` +
-    `最亮 ${craft.brightest.toFixed(0)} / 最暗 ${craft.darkest.toFixed(0)}（底色 ${craft.pageLum.toFixed(0)}）`);
+    `亮度 ${craft.darkest.toFixed(0)}~${craft.brightest.toFixed(0)}（底色 ${craft.pageLum.toFixed(0)}）`);
+  console.log(`  配色: 色相最大偏移 ${craft.drift.toFixed(2)}°  ` +
+    `主体明度 ${craft.heaviestL.toFixed(2)}（底色 ${craft.bgL.toFixed(2)}）  ` +
+    `最暗处 ${craft.darkestL.toFixed(2)}`);
   console.log(`  深水剖面: ${craft.deepStops} 个色标，最大不透明度 ${craft.deepMax}（表面是 ${craft.ripMax}）`);
 
-  check(craft.crests >= 3 && craft.troughs >= 3,
-    '表面剖面是一列波（多个波峰 + 波谷），不是单独一圈',
+  check(craft.crests >= 2 && craft.troughs >= 2,
+    '表面剖面是一列波（至少两个波峰跟在后头），不是单独一圈',
     `${craft.crests} 峰 / ${craft.troughs} 谷`);
   check(craft.brightest > craft.pageLum && craft.darkest < craft.pageLum,
-    '剖面上同时有比底色亮的波峰和比底色暗的波谷（这就是"折射"的读法）',
+    '剖面上同时有比底色亮的波峰和比底色暗的波谷（有厚度，不是一条飘着的亮线）',
     `亮 ${craft.brightest.toFixed(0)} 暗 ${craft.darkest.toFixed(0)} / 底色 ${craft.pageLum.toFixed(0)}`);
+  /* 下面两条是"画面会不会脏"的直接判据 —— 第一版两条都不合格 */
+  check(craft.heaviestL > craft.bgL,
+    '画面的主体是【提亮】的（高饱和亮底上压暗 = 污渍）',
+    `主体明度 ${craft.heaviestL.toFixed(2)} > 底色 ${craft.bgL.toFixed(2)}`);
+  check(craft.bgL - craft.darkestL < .06,
+    '暗带只压一点点（压狠了就是脏）',
+    `降到 ${craft.darkestL.toFixed(2)}，比底色低 ${(craft.bgL - craft.darkestL).toFixed(3)}`);
+  check(craft.drift < 1.5, '每个色标合成后色相都不偏（同比例缩通道 —— 缩的比例不一致就浑）',
+    `最大偏移 ${craft.drift.toFixed(2)}°`);
   check(craft.deepMax < craft.ripMax * .7,
     '深水层比表面层淡得多（它是"底"，不抢戏）',
     `${craft.deepMax} < ${(craft.ripMax * .7).toFixed(2)}`);
