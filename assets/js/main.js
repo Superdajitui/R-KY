@@ -625,6 +625,277 @@
   }
 
   /* ---------------------------------------------------------
+     11. 欢迎页：标题逐字弹起 + 纯色区流体
+     ---------------------------------------------------------
+     两个效果共用【一个】 rAF 循环。它们都只在欢迎页可见时才有意义，
+     拆成两个循环就是两倍的每帧开销，还得各写一遍启停判断。
+
+     停止条件不是可选项：欢迎页滚过去之后只是 visibility:hidden，
+     DOM 和它的合成层都还在。不主动停，这个循环会一直空转到用户关掉标签页。
+     这里有两道闸：滚过一屏就整体复位并停；鼠标停住 2.2s 之后
+     流体自己收力、弹簧收敛，也就没有"还在动"的理由了。
+
+     手机上整个不启动：逐字缩放要重绘十几个上百像素的大字，
+     流体是四层上千万像素的图层 —— 都不是手机该干的事。
+
+     流体为什么不用"真"流体（feTurbulence 位移、或者 canvas 解纳维-斯托克斯）：
+     那些每一帧都要重新过滤整屏像素。这个站已经因为手机上全屏混合模式
+     卡过一次，那还只是静态的。这里的做法全程只有 transform，
+     合成器就能完成，主线程每帧只写几个数字。
+     --------------------------------------------------------- */
+  const fluid   = $('#fluid');
+  const titleEl = $('.welcome__title');
+  const bodyEl  = $('.welcome__body');
+
+  if (welcome && fluid && titleEl && bodyEl && !isTouch && !reduce) {
+    /* ── 拆字 ──
+       行内元素不吃 transform，不拆成 inline-block 就谈不上"逐字"。
+       只在真能跑动效的时候拆：拆了却没脚本接着驱动，等于白改一遍 DOM。 */
+    const chars = [];
+    for (const line of $$('.welcome__line > span', titleEl)) {
+      const text = line.dataset.text || line.textContent;
+      line.textContent = '';
+      line.classList.add('is-split');   // 让整行那层退位，描边填充下沉到每个字
+      for (const ch of text) {          // for...of 按码点走，不会把字拆成半个
+        const s = document.createElement('span');
+        s.className = 'welcome__ch';
+        s.dataset.text = ch;            // 填充那层要用 attr(data-text)
+        s.textContent = ch;
+        line.appendChild(s);
+        chars.push({ el: s, cx: 0, cy: 0, sc: 1, v: 0, wrote: 1 });
+      }
+    }
+
+    /* 弹簧参数和站里其它地方同源：ω=20、ζ=0.45 ——
+       就是 CSS 里 --sp-pop 那条（tools/gen-spring.mjs 0.45 20 540）。
+       同一个性格，标题弹起来的节奏才和导航、按钮是一套的。 */
+    const CH_AMP = .16;      // 最大放大到 1.16，与导航项一致
+    let CH_K = 400;          // ω²（let 是为了下面那个测试钩子）
+    let CH_C = 18;           // 2ζω
+    let radius = 320;
+
+    /* 每个字相对 .welcome__body 的位置。
+       不能直接用 offsetLeft —— 那是相对 offsetParent 的，而【两行的
+       offsetParent 并不一样】：镂空那行本身是 position:relative
+       （它原来的填充层需要），于是第二行的字认那一行为父、offsetTop 从 0 起算。
+       实测偏差是整整一行的高度：第二行的字被算到 y=141，实际在 542。
+       影响半径就完全照着一个错位置在算 —— 鼠标正悬在字上，
+       算出来的距离却有 250px，效果几乎看不见（实测最大只到 1.006）。
+
+       所以沿 offsetParent 链一路累加到共同祖先，中间谁定位过都不影响。
+       offsetLeft/offsetTop 是布局值、不受 transform 影响，
+       所以字在缩放过程中重量也不会自己追着自己跑。 */
+    function offsetIn(el, root) {
+      let x = 0, y = 0, n = el;
+      while (n && n !== root) { x += n.offsetLeft; y += n.offsetTop; n = n.offsetParent; }
+      return { x, y };
+    }
+
+    function measure() {
+      const b = bodyEl.getBoundingClientRect();
+      for (const c of chars) {
+        const o = offsetIn(c.el, bodyEl);
+        c.cx = b.left + o.x + c.el.offsetWidth / 2;
+        c.cy = b.top + o.y + c.el.offsetHeight / 2;
+      }
+      // 影响半径跟着字号走。字号是 clamp 出来的（手机 55px / 桌面 152px），
+      // 写死 px 的话小屏上会"一次弹起一整行"，就谈不上逐个了。
+      if (chars[0]) radius = Math.max(120, chars[0].el.offsetHeight * 2.1);
+    }
+
+    /* 四团色斑，刚度递减 —— 这就是"尾迹"的全部来源：
+       快的先到、慢的拖在后面，中间拉开的那一段看着就是流体。
+
+       sz 是各自的大小：一大三小。全用同一个尺寸、又都往鼠标上聚，
+       四团会叠成一块规规矩矩的圆 —— 那是"跟着鼠标的影子"，不是液体。
+       有大小差、有错位，轮廓才有内部结构。
+
+       阻尼比统一 0.55（过冲约 12%）：有一点回弹，但不会荡成布丁。
+
+       ⚠ 改 c 之前先算一下 c·dt：这里的积分是半隐式欧拉，
+       c·dt ≥ 1 时速度会每帧翻号，整个弹簧直接发散。
+       dt 上限锁在 1/30，所以 c 必须小于 30；现在最大是 22.8，留了余量。
+       （这个边界是真踩到的：写自检时把 c 调到 80 想造一个"过阻尼"的对照组，
+        结果字根本没动 —— 不是过阻尼，是数值发散。） */
+    const K  = [430, 220, 125, 82];
+    const SZ = [1, .78, .6, .46];
+    const blobs = $$('i', fluid).map((el, i) => ({
+      el, x: 0, y: 0, vx: 0, vy: 0,
+      k: K[i], c: 2 * .55 * Math.sqrt(K[i]), sz: SZ[i],
+      // 静止时也各自错开，免得塌成一团；错位量比半径小得多，
+      // 这样它们仍然是一个整体，只是边缘毛糙、会呼吸
+      ox: [0, 86, -70, 118][i],
+      oy: [0, -62, 78, -40][i],
+      ph: i * 1.9,
+      wrote: '',
+    }));
+
+    const mouse = { x: 0, y: 0, has: false };
+    let inside = false;
+    let activity = 0;                    // 鼠标刚动过是 1，停一会儿衰减到 0
+    let lastMove = -1e9;
+    let running = false, lastT = 0;
+
+    // 滚过一屏 / 标签页切走就整体复位
+    const live = () => window.scrollY < innerHeight * .98 && !document.hidden;
+
+    function reset() {
+      for (const c of chars) {
+        c.sc = 1; c.v = 0;
+        if (c.wrote !== 1) { c.el.style.transform = ''; c.wrote = 1; }
+      }
+      for (const b of blobs) { b.vx = b.vy = 0; if (b.wrote) { b.wrote = ''; } }
+      fluid.classList.remove('is-live');
+      mouse.has = false; inside = false;
+    }
+
+    function frame(now) {
+      const dt = Math.min((now - lastT) / 1000, 1 / 30) || 1 / 60;
+      lastT = now;
+
+      if (!live()) { reset(); running = false; return; }
+
+      // 鼠标停住之后流体收力，弹簧收敛完循环就自己停 —— 不留空转
+      activity += ((now - lastMove > 2200 ? 0 : 1) - activity) * (1 - Math.exp(-dt / .45));
+      if (activity < .01) activity = 0;
+
+      // 流体还"活着"就一直跑，别在漂移途中把循环停掉
+      let moving = activity > 0;
+
+      // ── 标题逐字 ──
+      for (const c of chars) {
+        let target = 1;
+        if (inside) {
+          const d = Math.hypot(mouse.x - c.cx, mouse.y - c.cy);
+          if (d < radius) {
+            const f = 1 - d / radius;
+            target = 1 + CH_AMP * f * f;      // 平方衰减：正下方最弹，边缘几乎不动
+          }
+        }
+        c.v += ((target - c.sc) * CH_K - c.v * CH_C) * dt;
+        c.sc += c.v * dt;
+
+        const settled = Math.abs(c.sc - target) < 4e-4 && Math.abs(c.v) < 4e-3;
+        if (settled) { c.sc = target; c.v = 0; }
+        else moving = true;
+
+        // 只在值真的变了才写。写一次就是一次重绘，
+        // 十几个大字每帧无条件重绘，桌面也会掉帧。
+        if (Math.abs(c.sc - c.wrote) > 6e-4) {
+          if (c.sc === 1) c.el.style.transform = '';
+          else c.el.style.transform = 'scale(' + c.sc.toFixed(4) + ')';
+          c.wrote = c.sc;
+        }
+      }
+
+      // ── 流体 ──
+      const t = now / 1000;
+      for (const b of blobs) {
+        // 鼠标停住之后靠这两个不同周期的慢正弦继续游，让流体一直是活的；
+        // activity 一收，它们就慢慢停到鼠标旁边
+        const tx = mouse.x + b.ox + Math.sin(t * .31 + b.ph) * 54 * activity;
+        const ty = mouse.y + b.oy + Math.cos(t * .23 + b.ph * 1.4) * 46 * activity;
+        b.tx = tx; b.ty = ty;
+
+        b.vx += ((tx - b.x) * b.k - b.vx * b.c) * dt;
+        b.vy += ((ty - b.y) * b.k - b.vy * b.c) * dt;
+        b.x += b.vx * dt; b.y += b.vy * dt;
+
+        /* 收敛到亚像素之后直接吸附、速度清零。
+           不做这一步，循环会永远停不下来：半隐式欧拉在平衡点附近
+           位置收敛到 0.05px 了，速度却吊在 0.6~3.2px/s 下不去
+           （一帧只移动 0.05px，肉眼就是静止的）。
+           实测就是卡在这里：残余距离全都小于 0.13px，循环却还在跑。 */
+        let goal = Math.hypot(tx - b.x, ty - b.y);
+        const sp = Math.hypot(b.vx, b.vy);
+        if (goal < .2 && sp < 8) {
+          b.x = tx; b.y = ty; b.vx = b.vy = 0; goal = 0;
+        }
+        if (goal > 0) moving = true;
+
+        // 按速度沿运动方向拉长、垂直方向压扁 —— 水滴被甩出去就是这个形状。
+        // 这就是"流体"读起来像液体的地方：一个正圆跟着鼠标走只会像光斑。
+        // 再乘上各自的大小 sz，四团才有大小差。
+        const st = Math.min(sp / 2600, .34);
+        const tf = 'translate3d(' + b.x.toFixed(1) + 'px,' + b.y.toFixed(1) + 'px,0)' +
+          ' rotate(' + Math.atan2(b.vy, b.vx).toFixed(3) + 'rad)' +
+          ' scale(' + (b.sz * (1 + st)).toFixed(3) + ',' + (b.sz * (1 - st * .72)).toFixed(3) + ')';
+        if (tf !== b.wrote) { b.el.style.transform = tf; b.wrote = tf; }
+      }
+
+      if (moving) requestAnimationFrame(frame);
+      else running = false;
+    }
+
+    function kick() {
+      if (running || !live()) return;
+      running = true;
+      lastT = performance.now();
+      requestAnimationFrame(frame);
+    }
+
+    /* 进入时把四团直接摆到指针旁边，不从视口中心飞过来。
+       第一次进入和"离开后从别处再进来"都算，否则会看到一条横穿屏幕的拖影。 */
+    function place(x, y) {
+      for (const b of blobs) {
+        b.x = x + b.ox; b.y = y + b.oy; b.vx = b.vy = 0; b.wrote = '';
+      }
+    }
+
+    welcome.addEventListener('pointerenter', (e) => {
+      inside = true;
+      mouse.x = e.clientX; mouse.y = e.clientY; mouse.has = true;
+      place(e.clientX, e.clientY);
+      fluid.classList.add('is-live');
+      lastMove = performance.now();
+      kick();
+    }, { passive: true });
+
+    welcome.addEventListener('pointermove', (e) => {
+      if (!mouse.has) {
+        mouse.has = true;
+        place(e.clientX, e.clientY);
+        fluid.classList.add('is-live');
+      }
+      mouse.x = e.clientX; mouse.y = e.clientY;
+      inside = true;
+      lastMove = performance.now();
+      kick();
+    }, { passive: true });
+
+    welcome.addEventListener('pointerleave', () => { inside = false; kick(); }, { passive: true });
+
+    // 字体换入会改变标题的排版（子集字体和回退字体的字宽不一样），
+    // 位置必须重量一次，否则影响半径会照着旧的字号算。
+    measure();
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(measure);
+    addEventListener('load', measure);
+    let rt = 0;
+    addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(measure, 150); });
+
+    /* 调试钩子，和 __scrub() 一套思路：
+       让测试能直接问"循环还跑着吗"，而不是靠帧率间接猜。
+       "鼠标停住之后要自己停下来"这件事，只有问得出来才验得了。 */
+    window.__welcomeFx = () => ({
+      running,
+      activity: +activity.toFixed(3),
+      inside,
+      radius: Math.round(radius),
+      chars: chars.map(c => +c.sc.toFixed(4)),
+      blobs: blobs.map(b => [Math.round(b.x), Math.round(b.y)]),
+      // 还差多远、还剩多快 —— "循环为什么不停"这种问题，只有这两个数说得清
+      residual: blobs.map(b => +Math.hypot(b.tx - b.x, b.ty - b.y).toFixed(3)),
+      speed: blobs.map(b => +Math.hypot(b.vx, b.vy).toFixed(3)),
+    });
+
+    /* 再开一个口子给测试把弹簧的阻尼调大。
+       弹簧参数在闭包里，从外面没有任何别的办法造出一个"不弹"的对照组 ——
+       而没有对照组，"放大是 Q 弹的"这条断言就没法证明它真的会失败，
+       等于一句自我感觉良好的空话。生产路径不会碰它。 */
+    window.__welcomeFx.damp = (k, c) => { CH_K = k; CH_C = c; };
+  }
+
+  /* ---------------------------------------------------------
      10. 杂项
      --------------------------------------------------------- */
   $('#year').textContent = new Date().getFullYear();

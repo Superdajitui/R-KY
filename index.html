@@ -60,6 +60,11 @@
      因为 position:fixed，滚回顶部还能再看到它。
      无脚本时由上面的 <noscript> 直接隐藏。 -->
 <div class="welcome" id="welcome">
+  <!-- 流体层：四团跟随速度不同的柔和色斑，鼠标滑动时拖出尾迹。
+       放在网格线【下面】—— 网格只有 8% 不透明度，压在上面才不会被糊掉。
+       纯装饰，aria-hidden；手机上不启用。 -->
+  <div class="welcome__fluid" id="fluid" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+
   <div class="welcome__grid" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 
   <div class="welcome__top">

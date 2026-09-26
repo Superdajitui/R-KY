@@ -409,6 +409,50 @@ em{font-style:normal}
 .welcome__grid i{border-right:1px solid rgba(17,17,18,.08)}
 .welcome__grid i:last-child{border-right:0}
 
+/* ---------- 欢迎页：流体层 ----------
+   鼠标在纯色区域滑动时，四团柔和的暗色斑跟着走 —— 不是"一个光点黏着鼠标"，
+   而是【四团跟随速度不同的色斑】叠在一起：快的先到、慢的拖在后面，
+   拉开的那一段就是流体的尾迹。每一团还按自己的速度沿运动方向拉长、
+   垂直方向压扁 —— 水滴被甩出去就是这个形状（见 main.js 第 11 节）。
+
+   方案是刻意选的，不是图省事：
+   真正的流体（SVG 的 feTurbulence + feDisplacementMap、或者 canvas 里解
+   纳维-斯托克斯方程）每一帧都要重新过滤整屏像素。这个站之前已经因为
+   手机上全屏混合模式 + 大面积模糊卡过一次，那还是静态的。
+   这里全程只有 transform，图层在 GPU 上合成，主线程每帧只写几个数字。
+   手机上直接不启用。
+
+   尺寸夹上限是算过显存的：60vmax 在 2560 宽的屏上是 1536px，
+   四层就是 37MB；夹到 760px 之后最多 9MB。
+
+   尺寸也是刻意压到 40vmax 的：一开始用 58vmax，四团直径 1100px
+   只散开 135px，几乎完全重叠成一块 —— 看着像"一团跟着鼠标的影子"，
+   不像液体。现在四团各自还有大小差（一大三小，见 main.js），
+   叠出来的轮廓才有内部结构。 */
+.welcome{--blob:clamp(340px,40vmax,760px)}
+.welcome__fluid{
+  position:absolute;inset:0;z-index:0;pointer-events:none;
+  /* 第一次移动鼠标之前不显示，否则四团色斑会先堆在视口中心再飞过去 */
+  opacity:0;transition:opacity .7s var(--ease);
+}
+.welcome__fluid.is-live{opacity:1}
+.welcome__fluid i{
+  position:absolute;left:0;top:0;
+  width:var(--blob);height:var(--blob);
+  /* 负 margin 把原点从左上角挪到圆心，
+     这样 JS 写的 translate3d 就是"圆心要去的坐标"，不用再减半径 */
+  margin:calc(var(--blob) / -2) 0 0 calc(var(--blob) / -2);
+  border-radius:50%;
+  background:radial-gradient(circle closest-side,
+    rgba(122,168,0,.50) 0%,
+    rgba(122,168,0,.36) 30%,
+    rgba(122,168,0,.20) 52%,
+    rgba(122,168,0,.07) 70%,
+    rgba(122,168,0,0) 88%);
+  will-change:transform;
+  transform:translate3d(-9999px,-9999px,0);
+}
+
 .welcome__top{
   position:relative;z-index:1;
   display:flex;justify-content:space-between;align-items:center;gap:1rem;
@@ -500,6 +544,34 @@ body.is-ready .welcome__line:nth-child(2) > span{transition-delay:.13s}
   color:var(--neon);                    /* 填背景色，盖住内部交叉线和描边内半 */
   -webkit-text-stroke:0;
   pointer-events:none;
+}
+
+/* ---------- 欢迎页标题：逐字弹起（JS 拆字之后才生效）----------
+   main.js 会把每一行拆成单个字，每个字自己是一个 inline-block ——
+   行内元素不吃 transform，不拆就无从谈起"逐字"。
+   没跑 JS（或者关了动效）时不会拆，下面这些规则自然不生效，
+   标题仍是上面那套整行描边的做法，显示完全正常。 */
+.welcome__ch{
+  display:inline-block;
+  /* 缩放围绕字身中心：整字往四周长，是"弹"起来。
+     用 bottom 会变成往上抽，像在长高，不像弹。 */
+  transform-origin:50% 52%;
+}
+/* 整行那一层在拆字后要退位：
+   1) -webkit-text-stroke 是【可继承】属性，不关掉的话每个字会各自再描一次，
+      叠成双倍粗细；
+   2) 它的 ::after 还在按 attr(data-text) 整行盖一层填充，会和逐字的填充打架。 */
+.welcome__line--outline > span.is-split{color:inherit;-webkit-text-stroke:0}
+.welcome__line--outline > span.is-split::after{content:none}
+/* 描边和填充下沉到每个字上，做法与上面完全一致，只是作用域从"行"变成"字" */
+.welcome__line--outline .welcome__ch{
+  position:relative;color:transparent;
+  -webkit-text-stroke:clamp(3.6px,0.028em,4.4px) var(--ink);
+}
+.welcome__line--outline .welcome__ch::after{
+  content:attr(data-text);
+  position:absolute;left:0;top:0;
+  color:var(--neon);-webkit-text-stroke:0;pointer-events:none;
 }
 
 .welcome__foot{

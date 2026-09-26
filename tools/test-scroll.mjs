@@ -603,6 +603,28 @@ check(rm.bad.length === 0, '关闭动效时没有元素被藏在透明里',
   rm.bad.length ? rm.bad.slice(0, 4).join(' ') : '全部可见');
 check(rm.lines === 0, '关闭动效时标题不再被裁切', `${rm.lines} 行仍偏移`);
 check(rm.bars === 0, '关闭动效时进度条直接显示为满', `${rm.bars} 条仍收起`);
+
+/* "减少动态效果"下，欢迎页那两个效果（逐字弹起 + 流体）必须【完全不启动】。
+   不只是"看不见"：逐字那条要拆 DOM、流体那条要挂四层上千万像素的图层，
+   在明确要求减少动效的机器上跑这些，本身就是错的。
+   检查拆字有没有发生，是最直接的证据 —— 拆了 DOM 就一定会在那儿。 */
+const rmFx = await rp.evaluate(() => ({
+  hooked: typeof window.__welcomeFx === 'function',
+  chars: document.querySelectorAll('.welcome__ch').length,
+  split: document.querySelectorAll('.welcome__line > span.is-split').length,
+  fluidLive: document.querySelector('#fluid')?.classList.contains('is-live'),
+  fluidOpacity: getComputedStyle(document.querySelector('#fluid')).opacity,
+  strokeOnLine: getComputedStyle(document.querySelector('.welcome__line--outline > span'))
+    .webkitTextStrokeWidth,
+}));
+check(!rmFx.hooked && rmFx.chars === 0 && rmFx.split === 0,
+  '关闭动效时不启动逐字效果（DOM 都没拆）',
+  `hook=${rmFx.hooked} 拆了 ${rmFx.chars} 个字`);
+check(rmFx.fluidOpacity === '0' && !rmFx.fluidLive, '关闭动效时流体层不出现',
+  `opacity=${rmFx.fluidOpacity}`);
+// 不拆字的时候，描边必须仍然画在整行上 —— 拆与不拆是两条路，两条都得对
+check(rmFx.strokeOnLine && rmFx.strokeOnLine !== '0px',
+  '关闭动效时镂空描边仍然画在整行上（没拆字这条路也是好的）', rmFx.strokeOnLine);
 await rp.close();
 
 /* ══════════════════ 3. 禁用 JS ══════════════════ */
@@ -670,6 +692,30 @@ const mob = await mp.evaluate(() => {
 });
 check(mob.bad.length === 0, '手机上滚到底也没有内容被藏住',
   mob.bad.length ? [...new Set(mob.bad)].join(' ') : '全部可见');
+
+/* 手机上欢迎页那套效果必须完全不启动。
+   逐字缩放要重绘十几个上百像素的大字，流体是四层上千万像素的图层 ——
+   在手机上跑这些就是拿续航换一个看不见的效果。
+   同时要确认【不拆字那条路】是好的：描边得仍然画在整行上。 */
+const mobFx = await mp.evaluate(() => {
+  const line = document.querySelector('.welcome__line--outline > span');
+  const cs = getComputedStyle(line);
+  const after = getComputedStyle(line, '::after');
+  return {
+    hooked: typeof window.__welcomeFx === 'function',
+    chars: document.querySelectorAll('.welcome__ch').length,
+    stroke: cs.webkitTextStrokeWidth,
+    strokeColor: cs.webkitTextStrokeColor,
+    fill: after.content,
+    fluidOpacity: getComputedStyle(document.querySelector('#fluid')).opacity,
+  };
+});
+check(!mobFx.hooked && mobFx.chars === 0, '手机上不启动逐字效果（省电，DOM 也没拆）',
+  `hook=${mobFx.hooked} 拆了 ${mobFx.chars} 个字`);
+check(mobFx.fluidOpacity === '0', '手机上流体层不出现', `opacity=${mobFx.fluidOpacity}`);
+check(mobFx.stroke !== '0px' && mobFx.fill !== 'none',
+  '手机上镂空描边和填充层都在整行上（没拆字这条路没被改坏）',
+  `${mobFx.stroke} ${mobFx.strokeColor} / ::after=${mobFx.fill}`);
 check(mob.passionSrc.every(s => !s.includes('-700.')),
   '2x 手机上照片取用了更大的一档（srcset 生效，没退到最小那档）',
   mob.passionSrc.join(' '));
@@ -1177,17 +1223,44 @@ for (const [tier, widths] of [['strict', STRICT], ['soft', SOFT]]) {
     // 字号系数从 12vw 提到 14.2vw 之后，最宽那行占到可用宽的 93% ——
     // 视觉冲击是够了，但离折行只剩 7% 余量，必须有人看着。
     // 这里用 Range 量真正的文字：块级 span 的盒子宽度永远等于父宽，量了没用。
+    //
+    // 行数【不能数矩形个数】：标题被拆成逐字之后，每个字都是 inline-block，
+    // Range 会为每个字各返回一个矩形 —— 4 个字的行会被数成 4 行、
+    // 6 个字的行数成 6 行，报出「8 行 / 12 行」这种一眼假的结果。
+    // 按 top 去重才是视觉行数；宽度也要把同一行里的几段加起来才是这一行的宽。
     const welcome = await p.evaluate(() =>
       [...document.querySelectorAll('.welcome__line')].map(el => {
         const span = el.querySelector('span');
-        const range = document.createRange();
-        range.selectNodeContents(span);
-        const rects = [...range.getClientRects()].filter(r => r.width > 1);
         const avail = document.querySelector('.welcome__title').getBoundingClientRect().width;
-        const widest = rects.length ? Math.max(...rects.map(r => r.width)) : 0;
+        /* 拆字之后【不再用 Range 量】。
+           Range 对 inline-block 子元素的返回行为不是"每段一个矩形"那么简单，
+           拆字之后它会多给出几种矩形，同一行被拆成两组 top，
+           一行就数成了两行。直接看每个字自己的矩形，语义明确、也不依赖 Range 的实现。
+           没拆字时（手机 / 减少动效）才退回 Range —— 那条路上只有一个文本节点。 */
+        const cs = [...span.querySelectorAll('.welcome__ch')].map(c => c.getBoundingClientRect());
+        let lines, widest;
+        if (cs.length) {
+          const groups = [];
+          for (const r of cs.sort((a, b) => a.top - b.top)) {
+            const g = groups[groups.length - 1];
+            // 容差 4px：同一行里各字的 top 可能差不到 1px（对齐基准不同）
+            if (g && r.top - g.top < 4) {
+              g.l = Math.min(g.l, r.left); g.r = Math.max(g.r, r.right);
+            } else groups.push({ top: r.top, l: r.left, r: r.right });
+          }
+          lines = groups.length;
+          widest = Math.max(...groups.map(g => g.r - g.l));
+        } else {
+          const range = document.createRange();
+          range.selectNodeContents(span);
+          const rects = [...range.getClientRects()].filter(r => r.width > 1);
+          lines = rects.length;
+          widest = rects.length ? Math.max(...rects.map(r => r.width)) : 0;
+        }
         return {
           text: (span.textContent || '').trim(),
-          lines: rects.length,
+          lines,
+          chars: cs.length,
           fill: +(widest / avail).toFixed(3),
         };
       }));

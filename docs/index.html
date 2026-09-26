@@ -31,7 +31,7 @@
 <!-- 开场页第一眼就是中文大字，中文字体必须一起预加载，
      否则会先闪一下系统字体再换过来 -->
 <link rel="preload" href="assets/fonts/noto-sans-sc-subset.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="assets/css/style.css?v=95865510">
+<link rel="stylesheet" href="assets/css/style.css?v=c0e5aeee">
 <noscript><style>
   /* 无脚本兜底：不让预加载遮罩和欢迎页挡住内容，一切静态可见。
      底部三件套和 KERRY 的每个字母都是各自入场的，漏一个就会缺一块。 */
@@ -62,6 +62,11 @@
      因为 position:fixed，滚回顶部还能再看到它。
      无脚本时由上面的 <noscript> 直接隐藏。 -->
 <div class="welcome" id="welcome">
+  <!-- 流体层：四团跟随速度不同的柔和色斑，鼠标滑动时拖出尾迹。
+       放在网格线【下面】—— 网格只有 8% 不透明度，压在上面才不会被糊掉。
+       纯装饰，aria-hidden；手机上不启用。 -->
+  <div class="welcome__fluid" id="fluid" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+
   <div class="welcome__grid" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 
   <div class="welcome__top">
@@ -468,6 +473,6 @@
   </div>
 </footer>
 
-<script src="assets/js/main.js?v=c8390a2e"></script>
+<script src="assets/js/main.js?v=fc839d16"></script>
 </body>
 </html>
