@@ -759,8 +759,15 @@
       activity += ((now - lastMove > 2200 ? 0 : 1) - activity) * (1 - Math.exp(-dt / .45));
       if (activity < .01) activity = 0;
 
-      // 流体还"活着"就一直跑，别在漂移途中把循环停掉
-      let moving = activity > 0;
+      /* 循环停不停的判据：这一帧有没有真的写出【新画面】。
+         不用"速度小于多少、距离小于多少"这种绝对阈值 ——
+         那些值与机器相关：半隐式欧拉在平衡点附近的下限跟帧长有关，
+         本地收到 0.05px 就停了，线上同一份代码却停在 0.28px，
+         于是线上循环一直不停、本地全绿。
+         写成"写没写出新画面"就没有这个问题：它问的正是"看起来还动吗"，
+         而且和帧率、机器都无关。 */
+      let wrote = false;
+      let moving = activity > 0;   // 流体还"活着"就别停
 
       // ── 标题逐字 ──
       for (const c of chars) {
@@ -775,16 +782,18 @@
         c.v += ((target - c.sc) * CH_K - c.v * CH_C) * dt;
         c.sc += c.v * dt;
 
-        const settled = Math.abs(c.sc - target) < 4e-4 && Math.abs(c.v) < 4e-3;
+        const settled = Math.abs(c.sc - target) < 8e-4 && Math.abs(c.v) < 8e-3;
         if (settled) { c.sc = target; c.v = 0; }
-        else moving = true;
 
         // 只在值真的变了才写。写一次就是一次重绘，
         // 十几个大字每帧无条件重绘，桌面也会掉帧。
-        if (Math.abs(c.sc - c.wrote) > 6e-4) {
-          if (c.sc === 1) c.el.style.transform = '';
-          else c.el.style.transform = 'scale(' + c.sc.toFixed(4) + ')';
+        // 另外，回到 1 的时候必须把内联样式清掉 ——
+        // 不能因为"差值小于阈值"就在那儿留一个 scale(1.0002)。
+        const needClear = c.sc === 1 && c.wrote !== 1;
+        if (needClear || Math.abs(c.sc - c.wrote) > 6e-4) {
+          c.el.style.transform = c.sc === 1 ? '' : 'scale(' + c.sc.toFixed(4) + ')';
           c.wrote = c.sc;
+          wrote = true;
         }
       }
 
@@ -802,16 +811,14 @@
         b.x += b.vx * dt; b.y += b.vy * dt;
 
         /* 收敛到亚像素之后直接吸附、速度清零。
-           不做这一步，循环会永远停不下来：半隐式欧拉在平衡点附近
-           位置收敛到 0.05px 了，速度却吊在 0.6~3.2px/s 下不去
-           （一帧只移动 0.05px，肉眼就是静止的）。
-           实测就是卡在这里：残余距离全都小于 0.13px，循环却还在跑。 */
-        let goal = Math.hypot(tx - b.x, ty - b.y);
+           这一步只是把状态收干净（不然会留着一个差零点几像素的残值），
+           停不停的判断不靠它 —— 靠下面那个"有没有写出新画面"。
+           阈值放宽到 1px / 20px·s⁻¹：半隐式欧拉在平衡点附近的下限与帧长有关，
+           本地和线上差了三倍多，卡太紧会导致某些机器上永远收敛不了。
+           1px 摊在 340~760px 的色斑上（0.3%）肉眼看不出来。 */
+        const goal = Math.hypot(tx - b.x, ty - b.y);
         const sp = Math.hypot(b.vx, b.vy);
-        if (goal < .2 && sp < 8) {
-          b.x = tx; b.y = ty; b.vx = b.vy = 0; goal = 0;
-        }
-        if (goal > 0) moving = true;
+        if (goal < 1 && sp < 20) { b.x = tx; b.y = ty; b.vx = b.vy = 0; }
 
         // 按速度沿运动方向拉长、垂直方向压扁 —— 水滴被甩出去就是这个形状。
         // 这就是"流体"读起来像液体的地方：一个正圆跟着鼠标走只会像光斑。
@@ -820,10 +827,10 @@
         const tf = 'translate3d(' + b.x.toFixed(1) + 'px,' + b.y.toFixed(1) + 'px,0)' +
           ' rotate(' + Math.atan2(b.vy, b.vx).toFixed(3) + 'rad)' +
           ' scale(' + (b.sz * (1 + st)).toFixed(3) + ',' + (b.sz * (1 - st * .72)).toFixed(3) + ')';
-        if (tf !== b.wrote) { b.el.style.transform = tf; b.wrote = tf; }
+        if (tf !== b.wrote) { b.el.style.transform = tf; b.wrote = tf; wrote = true; }
       }
 
-      if (moving) requestAnimationFrame(frame);
+      if (moving || wrote) requestAnimationFrame(frame);
       else running = false;
     }
 
@@ -864,6 +871,17 @@
     }, { passive: true });
 
     welcome.addEventListener('pointerleave', () => { inside = false; kick(); }, { passive: true });
+
+    /* 滚过一屏之后要复位 —— 这件事不能只挂在 frame 里的那道闸上：
+       循环很可能早就自己停了，停了就没人再进 frame，复位也就永远不会发生，
+       放大态会一直留在 DOM 上（欢迎页已经 visibility:hidden，看不见，
+       但滚回来就会看到几个字还是大的）。 */
+    addEventListener('scroll', () => {
+      if (!live() && (mouse.has || chars.some(c => c.sc !== 1))) {
+        reset();
+        running = false;
+      }
+    }, { passive: true });
 
     // 字体换入会改变标题的排版（子集字体和回退字体的字宽不一样），
     // 位置必须重量一次，否则影响半径会照着旧的字号算。
