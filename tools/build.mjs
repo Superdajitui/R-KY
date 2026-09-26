@@ -149,6 +149,40 @@ if (depth !== 0 || badAt >= 0) {
 }
 console.log(`  CSS 括号配平 ✓`);
 
+/* ---------- 源文件乱码检查 ----------
+   这一条同样是被真实事故逼出来的，而且就发生在这次改动里：
+   用 PowerShell 的 Set-Content 改一个源文件，中文被按 GBK 解码后又存成 UTF-8，
+   整份文件静默变成乱码 —— 105 个汉字没了，"弹簧"成了"寮圭哀"，
+   全程没有任何报错。文件能打开、构建能过、页面能显示，
+   只是每一句中文都烂掉了，得等用户看见才发现。
+   （那次是漏掉了一个 else 分支，靠人顺手查了一下才逮住。）
+
+   只挑几个"现代中文里几乎不可能单独出现"的字当指纹：
+   UTF-8 被当成 GBK 时，中文标点和常用字几乎必然退化成这几个。
+   不做整段启发式判断，是为了避免误报 ——
+   误报会拦住正常发布，比漏报还烦人。 */
+const MOJIBAKE = /[\u9225\u951b\u9286\u93b4\u9229]/;
+let garbled = null;
+for (const f of ['index.html', '404.html', 'assets/css/style.css', 'assets/js/main.js']) {
+  const p = path.join(DIST, f);
+  if (!existsSync(p)) continue;
+  const t = await readFile(p, 'utf8');
+  const m = t.match(MOJIBAKE);
+  if (m) {
+    const lineNo = t.slice(0, m.index).split('\n').length;
+    garbled = { f, lineNo, ch: m[0], sample: (t.split('\n')[lineNo - 1] || '').trim().slice(0, 70) };
+    break;
+  }
+}
+if (garbled) {
+  console.error(`\n✗ ${garbled.f} 第 ${garbled.lineNo} 行出现乱码字符「${garbled.ch}」`);
+  console.error(`  ${garbled.sample}`);
+  console.error('  多半是编辑中文源文件时被按 GBK 重新编码了。');
+  console.error('  改源文件请用编辑器，不要用 PowerShell 的 Set-Content / -replace。\n');
+  process.exit(1);
+}
+console.log(`  源文件无乱码 ✓`);
+
 for (const file of ['index.html', '404.html']) {
   const p = path.join(DIST, file);
   if (!existsSync(p)) continue;

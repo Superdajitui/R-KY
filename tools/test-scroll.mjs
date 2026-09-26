@@ -427,6 +427,150 @@ console.log('\n════ 跑马灯：首尾相接、全程不露白 ═══
     caught.differs ? '✓ 抓到了' : '✗ 没抓到');
 }
 
+/* --- 断言 9b：悬停导航项时文字要"Q弹"放大 --- */
+/*
+   用户要的是"鼠标悬停稍微放大，Q弹一些"。
+   "变大"看一眼截图就能确认；"Q弹"不能 ——
+   单调放大和真弹簧，在静态截图上长得一模一样。
+
+   Q 弹的物理定义是【欠阻尼】：冲过目标值，再退回来。
+   所以这条断言只认一件事：采样到的峰值必须【大于】终值。
+   顺带把邻居钉死：transform 不参与布局，放大时旁边五个字一个像素都不许动。
+
+   两条走过但走不通的取样路子，记在这里免得再踩：
+   · sleep 撞时间 —— page.screenshot() 本身要几十上百毫秒，撞不准峰值。
+   · getAnimations() + pause() + currentTime 定格 —— 更阴险：Chromium 对 CSSTransition
+     是按【线性】映射 currentTime 的，缓动不参与 seek。定格出来是一条直线，
+     会把"根本没弹"伪装成一次精确测量。
+   最后用逐帧读 getComputedStyle 矩阵 —— 读的就是真正画到屏幕上的值。
+*/
+{
+  // 导航在欢迎页是藏起来的，先滚下去再滚回来，让它露出来
+  await page.evaluate(() => window.scrollTo(0, innerHeight * 3));
+  await sleep(600);
+  await page.evaluate(() => window.scrollTo(0, innerHeight * 2.5));
+  await sleep(900);
+  const navReady = await page.evaluate(() => {
+    const nav = document.querySelector('.nav');
+    return { top: Math.round(nav.getBoundingClientRect().top), hidden: nav.classList.contains('is-hidden') };
+  });
+  check(navReady.top === 0 && !navReady.hidden, '滚动后导航条确实露出来了（否则下面的悬停测的是空气）',
+    `top=${navReady.top}${navReady.hidden ? ' 被隐藏' : ''}`);
+
+  const NAV_IDX = 2;                       // 「热爱」，左右都有邻居
+  const AWAY = { x: 12, y: 500 };
+  const navBox = () => page.evaluate(i => {
+    const r = document.querySelectorAll('.nav__links a')[i].getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  }, NAV_IDX);
+  const navScale = () => page.evaluate(i => {
+    const t = getComputedStyle(document.querySelectorAll('.nav__links a')[i].querySelector('span')).transform;
+    return t === 'none' ? 1 : +new DOMMatrixReadOnly(t).a.toFixed(4);
+  }, NAV_IDX);
+  const hoverNav = async () => {
+    /* 必须先移开、等回落跑完再悬停。
+       鼠标如果已经停在这个链接上（上一次测完没走），
+       mouse.move 到同一个坐标不会产生新的 hover，过渡根本不会重启 ——
+       采样器读到的是一条 1.16 的水平线，"过冲"于是变成 0。
+       这个坑真的踩到了：自检摘除后本该恢复的过冲，就是被它抹成 0.0000 的。 */
+    await page.mouse.move(AWAY.x, AWAY.y);
+    await sleep(650);
+    const box = await navBox();
+    await page.evaluate(i => {
+      const span = document.querySelectorAll('.nav__links a')[i].querySelector('span');
+      const read = () => {
+        const t = getComputedStyle(span).transform;
+        return t === 'none' ? 1 : new DOMMatrixReadOnly(t).a;
+      };
+      window.__qs = [];
+      const t0 = performance.now();
+      const tick = () => {
+        window.__qs.push([+(performance.now() - t0).toFixed(1), +read().toFixed(4)]);
+        if (performance.now() - t0 < 950) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }, NAV_IDX);
+    await page.mouse.move(box.x, box.y);
+    await sleep(1050);
+    const s = await page.evaluate(() => window.__qs);
+    const peak = Math.max(...s.map(p => p[1]));
+    return {
+      peak, samples: s.length,
+      peakAt: s.find(p => p[1] === peak)[0],
+      min: Math.min(...s.map(p => p[1])),
+      final: s[s.length - 1][1],
+      over: peak - s[s.length - 1][1],
+    };
+  };
+
+  const q = await hoverNav();
+  check(q.final > 1.1, '悬停后导航文字确实变大了', `scale=${q.final}`);
+  check(q.over > 0.005, '"Q弹"是欠阻尼：先冲过头再退回来（峰值 > 终值）',
+    `峰值 ${q.peak} > 终值 ${q.final}，过冲 ${q.over.toFixed(4)}（${(q.over / q.final * 100).toFixed(1)}%）`);
+  check(q.peakAt > 80 && q.peakAt < 320, '过冲出现在合理时刻（不是一路单调顶到位）',
+    `@${Math.round(q.peakAt)}ms / ${q.samples} 帧`);
+
+  // 邻居一个像素都不许动
+  const navRects = () => page.evaluate(() => ({
+    links: [...document.querySelectorAll('.nav__links a')].map(a => {
+      const r = a.getBoundingClientRect();
+      return [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)].join(',');
+    }).join('|'),
+    navH: Math.round(document.querySelector('.nav').getBoundingClientRect().height),
+  }));
+  await page.mouse.move(AWAY.x, AWAY.y);
+  await sleep(800);
+  const rest = await navRects();
+  const box2 = await navBox();
+  await page.mouse.move(box2.x, box2.y);
+  await sleep(900);
+  const hot = await navRects();
+  check(rest.links === hot.links && rest.navH === hot.navH,
+    '放大只作用于文字，不挤动旁边五项（transform 不参与布局）',
+    rest.links === hot.links ? `导航高度恒为 ${hot.navH}px` : '有位移');
+
+  // 放大后的字要还待在胶囊里，顶出去就是坏了
+  // 注意方向：sr.left - ar.left 才是【余量】。写成 ar.left - sr.left 的话，
+  // 文字好好待在中间反而会算出负数，把正常的当成越界。
+  const fit = await page.evaluate(i => {
+    const a = document.querySelectorAll('.nav__links a')[i];
+    const ar = a.getBoundingClientRect();
+    const sr = a.querySelector('span').getBoundingClientRect();
+    return { l: +(sr.left - ar.left).toFixed(1), r: +(ar.right - sr.right).toFixed(1) };
+  }, NAV_IDX);
+  check(fit.l > 0 && fit.r > 0, '放大的文字仍留在胶囊内（没有顶出去）',
+    `左右余量 ${fit.l}px / ${fit.r}px`);
+
+  // 移开要缩回去，不能留在放大态
+  await page.mouse.move(AWAY.x, AWAY.y);
+  await sleep(900);
+  const back = await navScale();
+  check(Math.abs(back - 1) < 0.001, '鼠标移开后文字缩回原大小', `scale=${back}`);
+
+  // 自检：把弹簧换成一条单调曲线，确认"过冲"这条断言真的抓得住
+  const flatStyle = await page.addStyleTag({
+    content: '.nav__links a:hover > span{transition-timing-function:linear!important}',
+  });
+  await sleep(200);
+  const flat = await hoverNav();
+  check(flat.over <= 0.005, '换成 monotonic 缓动后检查能抓到"没弹"（证明这条断言有效）',
+    flat.over <= 0.005 ? `过冲只剩 ${flat.over.toFixed(4)}` : `竟然还有 ${flat.over.toFixed(4)}`);
+
+  /* 自检的样式必须摘掉再往下走。
+     留着它，后面所有测量读到的都是这条 linear —— 一个自检把后面的检查全部
+     污染成"通过"，比没有自检更糟。（写这个脚本时就栽过一次：
+     出图的慢放抓拍读回来又是一条直线，查了半天才发现是自检样式没摘。）
+     所以这里不只摘，还要验证"摘干净了"：过冲必须回来。 */
+  await flatStyle.evaluate(el => el.remove());
+  await sleep(200);
+  const restored = await hoverNav();
+  check(restored.over > 0.005, '摘掉自检样式后过冲立刻恢复（自检没有污染后续测量）',
+    `过冲回到 ${restored.over.toFixed(4)}`);
+
+  await page.mouse.move(AWAY.x, AWAY.y);
+  await sleep(600);
+}
+
 /* --- 断言 10：停下来之后 raf 循环要停、不留内联残留 --- */
 await sleep(1400);
 const settle = await page.evaluate(() => document.querySelector('.marquee__track').style.transform);

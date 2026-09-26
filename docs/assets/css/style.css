@@ -170,6 +170,37 @@ em{font-style:normal}
 .nav__links a:hover{color:var(--neon);background:rgba(255,255,255,.04)}
 .nav__links a:hover::before{width:44%}
 
+/* 导航文字：悬停时"Q弹"放大。
+   只放大【文字】，不放大胶囊底 —— 用户要的是"这几个字稍微放大"，
+   底也跟着涨会显得整块在挤，反而糊。
+   曲线不是手调的 cubic-bezier，而是按二阶欠阻尼弹簧的阶跃响应采样出来的
+   （node tools/gen-spring.mjs 0.45 20 540 → ζ=0.45 / ω=20 / 540ms）：
+   冲过头 20.5%（176ms 时最大）→ 回弹到 0.958 → 稳住。
+   那一下"过头再回来"才是 Q 弹的物理来源，cubic-bezier 做不出这个回弹。
+   不支持 linear() 的浏览器用上一行的 cubic-bezier，只过冲一次、不回弹，也不难看。 */
+.nav__links a > span{
+  display:inline-block;              /* 行内元素不吃 transform，必须先转成 inline-block */
+  transition-property:transform;
+  transition-duration:.3s;
+  transition-timing-function:cubic-bezier(.34,1.3,.64,1);
+}
+.nav__links a:hover > span,
+.nav__links a:focus-visible > span{
+  transform:scale(1.16);
+  transition-duration:.54s;
+  transition-timing-function:cubic-bezier(.2,1.5,.4,1);
+  transition-timing-function:linear(0,0.0657,0.2281,0.4387,0.6572,0.8542,1.0115,1.1213,1.1838,1.2051,1.1947,1.1632,1.1207,1.0757,1.0344,1.001,0.9773,0.9633,0.958,0.9595,0.9655,0.9741,0.9834,0.992,0.9991,1.0042,1.0073,1.0086,1);
+}
+/* 按下时先压一下，松手再弹回来 —— 手感上的"捏了一下"。
+   压得快、回得弹，两个方向用不同时长，这是 Q 弹的关键。
+   注意这里必须显式给缓动：不写的话会从 :hover 继承那条 540ms 的弹簧，
+   被压进 120ms 里就成了 39ms 一次的小抖动，看着像故障。 */
+.nav__links a:active > span{
+  transform:scale(.94);
+  transition-duration:.12s;
+  transition-timing-function:cubic-bezier(.3,.7,.4,1);
+}
+
 /* 按钮 */
 .btn{
   position:relative;display:inline-flex;align-items:center;gap:.55rem;
