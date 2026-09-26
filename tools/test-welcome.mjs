@@ -299,54 +299,101 @@ if (fxReady) {
   check(after.every(v => Math.abs(v - 1) < 0.01), '鼠标移开后所有字缩回原大小',
     after.map(v => v.toFixed(3)).join(','));
 
-  /* --- 流体 --- */
-  await page.mouse.move(200, 300, { steps: 8 });
-  await sleep(120);
-  await page.mouse.move(1150, 620, { steps: 28 });
-  await sleep(200);
-  const fl = await page.evaluate(() => {
-    const layer = document.querySelector('#fluid');
-    return {
-      live: layer.classList.contains('is-live'),
-      opacity: getComputedStyle(layer).opacity,
-      blobs: [...layer.querySelectorAll('i')].map(el => {
-        const tf = el.style.transform;
-        const t = tf.match(/translate3d\(([-\d.]+)px,\s*([-\d.]+)px/);
-        const sc = tf.match(/scale\(([-\d.]+),\s*([-\d.]+)\)/);
-        return { x: t ? +t[1] : null, y: t ? +t[2] : null,
-          sx: sc ? +sc[1] : null, sy: sc ? +sc[2] : null };
-      }),
-    };
-  });
-  console.log(`  流体: live=${fl.live} opacity=${fl.opacity}`);
-  for (const [i, b] of fl.blobs.entries()) {
-    console.log(`    色斑 ${i}: (${b.x?.toFixed(0)}, ${b.y?.toFixed(0)})  形变 ${b.sx}×${b.sy}`);
+  /* --- 水波纹 ---
+     两个行为，分开验：
+       · 鼠标不动时自己冒（随机位置）—— 这是"水面"的底噪
+       · 鼠标移动时沿路径留下波纹 —— 这是"晕开" */
+  const rings = () => page.evaluate(() =>
+    [...document.querySelectorAll('#wave i')].map(el => {
+      const a = el.getAnimations()[0];
+      if (!a) return null;
+      const r = el.getBoundingClientRect();
+      return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2),
+        d: Math.round(r.width), op: +getComputedStyle(el).opacity,
+        p: +(a.effect.getComputedTiming().progress ?? 1).toFixed(3), state: a.playState };
+    }).filter(Boolean));
+
+  check((await page.evaluate(() => document.querySelectorAll('#wave i').length)) === 16,
+    '水波纹层是一个 16 个元素的复用池',
+    `${await page.evaluate(() => document.querySelectorAll('#wave i').length)} 个`);
+
+  // ① 鼠标不动：等几秒，应当自己冒出若干圈，而且位置各不相同
+  await page.mouse.move(20, 840);
+  await sleep(900);
+  const seen = [];
+  let maxAlive = 0;
+  for (let i = 0; i < 7; i++) {
+    await sleep(720);
+    const live = (await rings()).filter(r => r.state === 'running');
+    maxAlive = Math.max(maxAlive, live.length);
+    seen.push(...live.map(r => r.x + ',' + r.y));
+  }
+  const distinct = new Set(seen).size;
+  console.log(`  鼠标不动 5s：出现 ${seen.length} 圈次，不同位置 ${distinct} 个，` +
+    `同时最多 ${maxAlive} 圈`);
+  check(seen.length >= 3, '鼠标不动时纯色区会自己冒出水波纹',
+    `5 秒内 ${seen.length} 圈次`);
+  check(distinct >= 3, '波纹的位置是随机的（不是总在同一个点）',
+    `${distinct} 个不同位置`);
+
+  // ② 同一圈：必须一边扩大一边变淡 —— 这就是"晕开"
+  {
+    let grown = null;
+    for (let attempt = 0; attempt < 8 && !grown; attempt++) {
+      /* 必须挑一圈【已经过了最亮那一刻】的来比。
+         透明度是 0 → 峰值(18%) → 0，在峰值之前本来就是越来越亮，
+         拿一段跨过峰值的区间去比"变淡"，只会得到"变亮了"这种假失败。
+         所以要求起始进度落在 .3~.6：两头都稳稳在衰减段上。 */
+      const a0 = (await rings()).filter(r => r.state === 'running')
+        .sort((a, b) => a.p - b.p).find(r => r.p > .3 && r.p < .6);
+      if (!a0) { await sleep(450); continue; }
+      await sleep(420);
+      const a1 = (await rings()).find(r =>
+        Math.abs(r.x - a0.x) < 4 && Math.abs(r.y - a0.y) < 4 && r.p > a0.p);
+      if (a1) grown = { a0, a1 };
+    }
+    if (grown) {
+      console.log(`  同一圈: ⌀${grown.a0.d}→${grown.a1.d}  op ${grown.a0.op.toFixed(3)}→${grown.a1.op.toFixed(3)}  ` +
+        `p ${grown.a0.p}→${grown.a1.p}`);
+      check(grown.a1.d > grown.a0.d, '波纹会向外扩散（直径变大）',
+        `⌀${grown.a0.d} → ⌀${grown.a1.d}`);
+      check(grown.a1.op < grown.a0.op, '扩散的同时会变淡（这就是"晕开"）',
+        `${grown.a0.op.toFixed(3)} → ${grown.a1.op.toFixed(3)}`);
+    } else {
+      check(false, '波纹会向外扩散（直径变大）', '没抓到同一圈的两次采样');
+    }
   }
 
-  check(fl.blobs.length === 4, '流体层有四团色斑', `${fl.blobs.length} 团`);
-  check(fl.live && fl.opacity === '1', '鼠标一动流体层就出现了', `opacity=${fl.opacity}`);
-  const xs = fl.blobs.map(b => b.x);
-  const spread = Math.max(...xs) - Math.min(...xs);
-  check(spread > 40, '四团色斑拉开了尾迹（不是叠成一团）', `展开 ${spread.toFixed(0)}px`);
-  const near2 = fl.blobs.filter(b => Math.hypot(b.x - 1150, b.y - 620) < 320).length;
-  check(near2 === fl.blobs.length, '四团都跟在鼠标附近', `${near2}/${fl.blobs.length} 团在 320px 内`);
-  const stretched = fl.blobs.filter(b => b.sx > 1.01 && b.sy < 0.99).length;
-  check(stretched > 0, '色斑沿运动方向被拉长、垂直方向压扁（液滴的形状）',
-    `${stretched} 团有拉伸，最大 ${Math.max(...fl.blobs.map(b => b.sx)).toFixed(3)}`);
-  check(fl.blobs.every(b => b.sy < 1), '每一团都是"拉长"而不是"变圆"');
-  // 四团大小不一，否则叠出来是一个规规矩矩的圆，像影子不像液体。
-  // 比的是 sx（各团的尺寸），不是 sx/sy —— 后者是"拉伸程度"，
-  // 四团的阻尼一样，拉伸程度当然也差不多，比它什么也说明不了。
-  const sizes = fl.blobs.map(b => b.sx);
-  check(Math.max(...sizes) / Math.min(...sizes) > 1.3, '四团大小明显不同（叠出来才有内部结构）',
-    `尺寸 ${sizes.map(v => v.toFixed(2)).join(' / ')}`);
+  // ③ 鼠标移动：沿路径留下波纹
+  await page.mouse.move(180, 740, { steps: 6 });
+  await sleep(1400);
+  const beforeMove = new Set((await rings()).map(r => r.x + ',' + r.y));
+  await page.mouse.move(1230, 320, { steps: 26 });
+  await sleep(120);
+  const afterMove = (await rings()).filter(r => r.state === 'running');
+  const fresh = afterMove.filter(r => !beforeMove.has(r.x + ',' + r.y));
+  console.log(`  扫过之后 ${afterMove.length} 圈在跑，其中 ${fresh.length} 圈是这次扫出来的`);
+  check(fresh.length >= 3, '鼠标移动会沿路径留下波纹（不是只有自动冒的那几圈）',
+    `${fresh.length} 圈新的`);
+  /* 新圈应当贴着鼠标走过的那条线。
+     只算点到线段的距离，不算"离鼠标当前位置多远" —— 尾迹本来就是留在身后的。 */
+  const d2seg = (px, py, x1, y1, x2, y2) => {
+    const dx = x2 - x1, dy = y2 - y1;
+    const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)));
+    return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+  };
+  const onPath = fresh.filter(r => d2seg(r.x, r.y, 180, 740, 1230, 320) < 120).length;
+  check(onPath >= Math.min(3, fresh.length), '新波纹落在鼠标走过的那条线上（尾迹）',
+    `${onPath}/${fresh.length} 圈贴线`);
 
   /* --- 循环必须自己停：这是性能承诺，不是观感问题 --- */
   await sleep(4200);
   const stopped = await page.evaluate(() => window.__welcomeFx());
-  check(!stopped.running, '鼠标停住几秒后 rAF 循环自己停了（不留空转）',
-    `running=${stopped.running} activity=${stopped.activity} ` +
-    `残余距离=${stopped.residual.join('/')} 速度=${stopped.speed.join('/')}`);
+  check(!stopped.running, '鼠标停住几秒后逐字的 rAF 循环自己停了（不留空转）',
+    `running=${stopped.running} 字=${stopped.chars.map(v => v.toFixed(3)).join(',')}`);
+  // 水波纹不靠 rAF，但停手之后也不该越积越多
+  check(stopped.rings <= 4, '鼠标停住时水波纹不会被堆起来（池子有上限、跑完就收）',
+    `在跑的 ${stopped.rings} 圈`);
 
   /* --- 滚过一屏之后要整体复位 --- */
   await page.evaluate(() => window.scrollTo(0, innerHeight * 2));
@@ -355,6 +402,17 @@ if (fxReady) {
   check(!afterScroll.running && afterScroll.chars.every(v => v === 1),
     '滚过欢迎页后循环停掉、字也复位了（不会留着放大态飘在那儿）',
     `running=${afterScroll.running}`);
+  /* 波纹也要一起停：欢迎页这时只是 visibility:hidden，
+     不停的话它会一直往一个看不见的层里画，白烧 GPU。 */
+  await sleep(2200);
+  const waveAfter = await page.evaluate(() => ({
+    rings: window.__welcomeFx().rings,
+    visible: [...document.querySelectorAll('#wave i')]
+      .filter(el => +getComputedStyle(el).opacity > .01).length,
+  }));
+  check(waveAfter.rings === 0 && waveAfter.visible === 0,
+    '滚过欢迎页后不再生成新波纹，残留的也都收干净了',
+    `活跃 ${waveAfter.rings} 圈 / 仍可见 ${waveAfter.visible} 圈`);
   await page.evaluate(() => window.scrollTo(0, 0));
   await sleep(900);
 

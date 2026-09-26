@@ -625,29 +625,37 @@
   }
 
   /* ---------------------------------------------------------
-     11. 欢迎页：标题逐字弹起 + 纯色区流体
+     11. 欢迎页：标题逐字弹起 + 纯色区水波纹
      ---------------------------------------------------------
-     两个效果共用【一个】 rAF 循环。它们都只在欢迎页可见时才有意义，
-     拆成两个循环就是两倍的每帧开销，还得各写一遍启停判断。
+     两个效果的性质完全不同，用的机制也就不同：
+
+       逐字弹起 —— 弹簧是每帧积分出来的，交给不合成器，必须走 rAF。
+                   但它只在鼠标悬停时跑，收敛之后就自己停。
+       水波纹   —— 一圈圈各自独立的短动画，交给 Web Animations 驱动，
+                   JS 只在"该冒一个波纹"的时候跑一次。
+                   这里【没有】常驻的 rAF 循环，也没有每帧重算的状态。
+
+     水波纹的触发有两种，对应两种观感：
+       · 鼠标不动 —— 随机位置自己冒，像雨点落在水面上
+       · 鼠标移动 —— 沿路径留下波纹往外晕开，按走过的距离触发而不是按时间
 
      停止条件不是可选项：欢迎页滚过去之后只是 visibility:hidden，
-     DOM 和它的合成层都还在。不主动停，这个循环会一直空转到用户关掉标签页。
-     这里有两道闸：滚过一屏就整体复位并停；鼠标停住 2.2s 之后
-     流体自己收力、弹簧收敛，也就没有"还在动"的理由了。
+     DOM 和它的合成层都还在。所以滚过一屏要复位、灭火，
+     波纹的自动生成也要停下来（否则它会一直往一个看不见的层里画）。
 
      手机上整个不启动：逐字缩放要重绘十几个上百像素的大字，
-     流体是四层上千万像素的图层 —— 都不是手机该干的事。
+     波纹是一池子几百像素的图层 —— 都不是手机该干的事。
 
-     流体为什么不用"真"流体（feTurbulence 位移、或者 canvas 解纳维-斯托克斯）：
+     为什么不用"真"流体（feTurbulence 位移、或者 canvas 解纳维-斯托克斯）：
      那些每一帧都要重新过滤整屏像素。这个站已经因为手机上全屏混合模式
-     卡过一次，那还只是静态的。这里的做法全程只有 transform，
-     合成器就能完成，主线程每帧只写几个数字。
+     卡过一次，那还只是静态的。这里的环把剖面烘进渐变，
+     全程只有 transform + opacity，合成器就能完成。
      --------------------------------------------------------- */
-  const fluid   = $('#fluid');
+  const wave    = $('#wave');
   const titleEl = $('.welcome__title');
   const bodyEl  = $('.welcome__body');
 
-  if (welcome && fluid && titleEl && bodyEl && !isTouch && !reduce) {
+  if (welcome && wave && titleEl && bodyEl && !isTouch && !reduce) {
     /* ── 拆字 ──
        行内元素不吃 transform，不拆成 inline-block 就谈不上"逐字"。
        只在真能跑动效的时候拆：拆了却没脚本接着驱动，等于白改一遍 DOM。 */
@@ -703,40 +711,115 @@
       if (chars[0]) radius = Math.max(120, chars[0].el.offsetHeight * 2.1);
     }
 
-    /* 四团色斑，刚度递减 —— 这就是"尾迹"的全部来源：
-       快的先到、慢的拖在后面，中间拉开的那一段看着就是流体。
+    /* ══════════ 水波纹 ══════════
+       由 Web Animations 驱动：JS 只在"该冒一个波纹"的时候跑一次，
+       扩散和淡出全交给合成器。这里【没有】常驻的 rAF 循环 ——
+       水波纹是一圈圈各自独立的短动画，不是每帧重算的状态。
 
-       sz 是各自的大小：一大三小。全用同一个尺寸、又都往鼠标上聚，
-       四团会叠成一块规规矩矩的圆 —— 那是"跟着鼠标的影子"，不是液体。
-       有大小差、有错位，轮廓才有内部结构。
+       池子复用而不是每次新建元素：新建会带来 GC 抖动，
+       而且元素数量没有上限的话，鼠标甩一下就能刷出上百个图层。 */
+    const pool = $$('i', wave);
+    const isRunning = el => el.__a && el.__a.playState === 'running';
+    const aliveCount = () => pool.reduce((n, el) => n + (isRunning(el) ? 1 : 0), 0);
 
-       阻尼比统一 0.55（过冲约 12%）：有一点回弹，但不会荡成布丁。
+    /* 挑一个可以用的环。
+       池子满了【不能把新的丢掉】—— 实测踩到过：
+       鼠标快速扫过时，正在跑的恰好是自动冒出来的那几圈，
+       被丢掉的却正是尾迹，扫完一看路径上只有稀稀拉拉三圈。
+       改成复用"最接近散尽"的那一圈（它的透明度已经很低，掐掉看不出来）。 */
+    function pick() {
+      let best = null, bestP = -1;
+      for (const el of pool) {
+        if (!isRunning(el)) return el;                     // 有空位就直接用
+        const p = el.__a.effect.getComputedTiming().progress ?? 1;
+        if (p > bestP) { bestP = p; best = el; }
+      }
+      return best;
+    }
 
-       ⚠ 改 c 之前先算一下 c·dt：这里的积分是半隐式欧拉，
-       c·dt ≥ 1 时速度会每帧翻号，整个弹簧直接发散。
-       dt 上限锁在 1/30，所以 c 必须小于 30；现在最大是 22.8，留了余量。
-       （这个边界是真踩到的：写自检时把 c 调到 80 想造一个"过阻尼"的对照组，
-        结果字根本没动 —— 不是过阻尼，是数值发散。） */
-    const K  = [430, 220, 125, 82];
-    const SZ = [1, .78, .6, .46];
-    const blobs = $$('i', fluid).map((el, i) => ({
-      el, x: 0, y: 0, vx: 0, vy: 0,
-      k: K[i], c: 2 * .55 * Math.sqrt(K[i]), sz: SZ[i],
-      // 静止时也各自错开，免得塌成一团；错位量比半径小得多，
-      // 这样它们仍然是一个整体，只是边缘毛糙、会呼吸
-      ox: [0, 86, -70, 118][i],
-      oy: [0, -62, 78, -40][i],
-      ph: i * 1.9,
-      wrote: '',
-    }));
+    function ring(x, y, dur, grow, peak) {
+      const el = pick();
+      if (!el) return;
+      if (el.__a) { el.__a.cancel(); el.__a = null; }
+      const at = s => ({ transform: 'translate3d(' + x.toFixed(1) + 'px,' +
+        y.toFixed(1) + 'px,0) scale(' + s.toFixed(3) + ')' });
+      /* 三个关键帧：几乎从零开始 → 快速铺开一点并达到最亮 → 铺到最大、淡尽。
+         中段放在 18%：真实的水波是"先猛地弹开、之后慢慢失去能量"，
+         峰值放太靠后会显得迟钝。 */
+      const a = el.animate([
+        Object.assign(at(grow * .07), { opacity: 0 }),
+        Object.assign(at(grow * .40), { opacity: peak, offset: .18 }),
+        Object.assign(at(grow), { opacity: 0 }),
+      ], { duration: dur, easing: 'cubic-bezier(.16,.62,.3,1)', fill: 'forwards' });
+      el.__a = a;
+      /* 跑完立刻 cancel：效果撤掉后元素回到 CSS 的 opacity:0，
+         终点本来就是 0，所以看不出任何跳变 ——
+         但这样就【不会留着一条 fill:forwards 的动画】继续参与合成。
+         不 cancel 的话，一次浏览下来会攒下几百条已完成动画。 */
+      a.onfinish = () => { a.cancel(); if (el.__a === a) el.__a = null; };
+    }
+
+    /* ── 鼠标不动时自己冒：像雨点落在水面上 ──
+       位置、间隔、大小、时长全都随机 —— 全都一样就成了节拍器。 */
+    let idleT = 0;
+    let lastTrail = -1e9;
+    function scheduleIdle(delay) {
+      clearTimeout(idleT);
+      idleT = setTimeout(() => {
+        if (!live()) { idleT = 0; return; }            // 停掉，滚回来时由 scroll 重新点火
+        /* 鼠标正在滑动就跳过这一拍：此刻池子应该留给尾迹用。
+           不然自动冒的那几圈会跟尾迹抢位置，扫描出来的路径是断的。 */
+        if (performance.now() - lastTrail < 700) { scheduleIdle(320); return; }
+        // 视口里随机一点，四边留余量，免得波纹还没铺开就被裁掉
+        const x = innerWidth * (.06 + Math.random() * .88);
+        const y = innerHeight * (.08 + Math.random() * .84);
+        ring(x, y, 1500 + Math.random() * 900, .5 + Math.random() * .45,
+          .42 + Math.random() * .2);
+        // 偶尔再来一滴挨着的，像先后落下的两个雨点
+        if (Math.random() < .34) {
+          setTimeout(() => {
+            if (!live()) return;
+            ring(x + (Math.random() - .5) * 190, y + (Math.random() - .5) * 150,
+              1400 + Math.random() * 800, .42 + Math.random() * .35,
+              .36 + Math.random() * .18);
+          }, 160 + Math.random() * 280);
+        }
+        scheduleIdle();
+      }, delay || (500 + Math.random() * 720));
+    }
+
+    /* ── 鼠标移动：沿着路径留下波纹往外晕开 ──
+       按【走过的距离】触发，不按时间 —— 手停着不动不该冒波纹，
+       甩得快就该一路留下更多。 */
+    const STEP = 62;
+    let last = null;
+    function trail(x, y) {
+      lastTrail = performance.now();
+      if (!last) { last = { x, y }; return; }
+      // 隔了很久没动（切窗口回来之类）就直接接管，不补一串横穿屏幕的波纹
+      if (Math.hypot(x - last.x, y - last.y) > 900) { last = { x, y }; return; }
+      let guard = 0;
+      let d = Math.hypot(x - last.x, y - last.y);
+      while (d >= STEP && guard++ < 4) {
+        const k = STEP / d;
+        const px = last.x + (x - last.x) * k;
+        const py = last.y + (y - last.y) * k;
+        ring(px, py, 1000 + Math.random() * 400, .62 + Math.random() * .4,
+          .46 + Math.random() * .2);
+        last = { x: px, y: py };
+        d = Math.hypot(x - last.x, y - last.y);
+      }
+    }
+
+    /* ══════════ 标题逐字：这一部分仍然需要 rAF ══════════
+       弹簧是每帧积分出来的，没法交给合成器。但它只在鼠标悬停时跑，
+       而且收敛之后就自己停。 */
 
     const mouse = { x: 0, y: 0, has: false };
     let inside = false;
-    let activity = 0;                    // 鼠标刚动过是 1，停一会儿衰减到 0
-    let lastMove = -1e9;
     let running = false, lastT = 0;
 
-    // 滚过一屏 / 标签页切走就整体复位
+    // 滚过一屏 / 标签页切走就别再动了
     const live = () => window.scrollY < innerHeight * .98 && !document.hidden;
 
     function reset() {
@@ -744,8 +827,7 @@
         c.sc = 1; c.v = 0;
         if (c.wrote !== 1) { c.el.style.transform = ''; c.wrote = 1; }
       }
-      for (const b of blobs) { b.vx = b.vy = 0; if (b.wrote) { b.wrote = ''; } }
-      fluid.classList.remove('is-live');
+      for (const el of pool) { if (el.__a) { el.__a.cancel(); el.__a = null; } }
       mouse.has = false; inside = false;
     }
 
@@ -755,21 +837,18 @@
 
       if (!live()) { reset(); running = false; return; }
 
-      // 鼠标停住之后流体收力，弹簧收敛完循环就自己停 —— 不留空转
-      activity += ((now - lastMove > 2200 ? 0 : 1) - activity) * (1 - Math.exp(-dt / .45));
-      if (activity < .01) activity = 0;
-
       /* 循环停不停的判据：这一帧有没有真的写出【新画面】。
          不用"速度小于多少、距离小于多少"这种绝对阈值 ——
-         那些值与机器相关：半隐式欧拉在平衡点附近的下限跟帧长有关，
-         本地收到 0.05px 就停了，线上同一份代码却停在 0.28px，
-         于是线上循环一直不停、本地全绿。
-         写成"写没写出新画面"就没有这个问题：它问的正是"看起来还动吗"，
-         而且和帧率、机器都无关。 */
-      let wrote = false;
-      let moving = activity > 0;   // 流体还"活着"就别停
+         那些值与机器相关（半隐式欧拉在平衡点附近的下限跟帧长有关），
+         本地和线上能差三倍，于是线上循环一直不停、本地全绿。 */
+      /* 续跑判据：还有字没落定就继续。
+         【不能】用"这一帧有没有写出新画面"来判断 ——
+         写入阈值是 6e-4，而弹簧慢下来之后每帧位移会小于这个数：
+         于是某一帧什么都没写，循环就停了，字却还差着 0.026
+         （实测停在 scale 0.974 不动，看起来像"移开鼠标后没完全缩回去"）。
+         写入阈值管的是"要不要重绘"，落定判据管的是"算完没有"，两件事不能合并。 */
+      let moving = false;
 
-      // ── 标题逐字 ──
       for (const c of chars) {
         let target = 1;
         if (inside) {
@@ -784,53 +863,19 @@
 
         const settled = Math.abs(c.sc - target) < 8e-4 && Math.abs(c.v) < 8e-3;
         if (settled) { c.sc = target; c.v = 0; }
+        else moving = true;
 
         // 只在值真的变了才写。写一次就是一次重绘，
         // 十几个大字每帧无条件重绘，桌面也会掉帧。
-        // 另外，回到 1 的时候必须把内联样式清掉 ——
-        // 不能因为"差值小于阈值"就在那儿留一个 scale(1.0002)。
+        // 另外回到 1 时必须把内联样式清掉，不能因为"差值小于阈值"就留一个 scale(1.0002)。
         const needClear = c.sc === 1 && c.wrote !== 1;
         if (needClear || Math.abs(c.sc - c.wrote) > 6e-4) {
           c.el.style.transform = c.sc === 1 ? '' : 'scale(' + c.sc.toFixed(4) + ')';
           c.wrote = c.sc;
-          wrote = true;
         }
       }
 
-      // ── 流体 ──
-      const t = now / 1000;
-      for (const b of blobs) {
-        // 鼠标停住之后靠这两个不同周期的慢正弦继续游，让流体一直是活的；
-        // activity 一收，它们就慢慢停到鼠标旁边
-        const tx = mouse.x + b.ox + Math.sin(t * .31 + b.ph) * 54 * activity;
-        const ty = mouse.y + b.oy + Math.cos(t * .23 + b.ph * 1.4) * 46 * activity;
-        b.tx = tx; b.ty = ty;
-
-        b.vx += ((tx - b.x) * b.k - b.vx * b.c) * dt;
-        b.vy += ((ty - b.y) * b.k - b.vy * b.c) * dt;
-        b.x += b.vx * dt; b.y += b.vy * dt;
-
-        /* 收敛到亚像素之后直接吸附、速度清零。
-           这一步只是把状态收干净（不然会留着一个差零点几像素的残值），
-           停不停的判断不靠它 —— 靠下面那个"有没有写出新画面"。
-           阈值放宽到 1px / 20px·s⁻¹：半隐式欧拉在平衡点附近的下限与帧长有关，
-           本地和线上差了三倍多，卡太紧会导致某些机器上永远收敛不了。
-           1px 摊在 340~760px 的色斑上（0.3%）肉眼看不出来。 */
-        const goal = Math.hypot(tx - b.x, ty - b.y);
-        const sp = Math.hypot(b.vx, b.vy);
-        if (goal < 1 && sp < 20) { b.x = tx; b.y = ty; b.vx = b.vy = 0; }
-
-        // 按速度沿运动方向拉长、垂直方向压扁 —— 水滴被甩出去就是这个形状。
-        // 这就是"流体"读起来像液体的地方：一个正圆跟着鼠标走只会像光斑。
-        // 再乘上各自的大小 sz，四团才有大小差。
-        const st = Math.min(sp / 2600, .34);
-        const tf = 'translate3d(' + b.x.toFixed(1) + 'px,' + b.y.toFixed(1) + 'px,0)' +
-          ' rotate(' + Math.atan2(b.vy, b.vx).toFixed(3) + 'rad)' +
-          ' scale(' + (b.sz * (1 + st)).toFixed(3) + ',' + (b.sz * (1 - st * .72)).toFixed(3) + ')';
-        if (tf !== b.wrote) { b.el.style.transform = tf; b.wrote = tf; wrote = true; }
-      }
-
-      if (moving || wrote) requestAnimationFrame(frame);
+      if (moving) requestAnimationFrame(frame);
       else running = false;
     }
 
@@ -841,32 +886,17 @@
       requestAnimationFrame(frame);
     }
 
-    /* 进入时把四团直接摆到指针旁边，不从视口中心飞过来。
-       第一次进入和"离开后从别处再进来"都算，否则会看到一条横穿屏幕的拖影。 */
-    function place(x, y) {
-      for (const b of blobs) {
-        b.x = x + b.ox; b.y = y + b.oy; b.vx = b.vy = 0; b.wrote = '';
-      }
-    }
-
     welcome.addEventListener('pointerenter', (e) => {
       inside = true;
       mouse.x = e.clientX; mouse.y = e.clientY; mouse.has = true;
-      place(e.clientX, e.clientY);
-      fluid.classList.add('is-live');
-      lastMove = performance.now();
+      last = { x: e.clientX, y: e.clientY };   // 别从上次离开的地方补一串
       kick();
     }, { passive: true });
 
     welcome.addEventListener('pointermove', (e) => {
-      if (!mouse.has) {
-        mouse.has = true;
-        place(e.clientX, e.clientY);
-        fluid.classList.add('is-live');
-      }
+      mouse.has = true; inside = true;
       mouse.x = e.clientX; mouse.y = e.clientY;
-      inside = true;
-      lastMove = performance.now();
+      trail(e.clientX, e.clientY);
       kick();
     }, { passive: true });
 
@@ -875,10 +905,14 @@
     /* 滚过一屏之后要复位 —— 这件事不能只挂在 frame 里的那道闸上：
        循环很可能早就自己停了，停了就没人再进 frame，复位也就永远不会发生，
        放大态会一直留在 DOM 上（欢迎页已经 visibility:hidden，看不见，
-       但滚回来就会看到几个字还是大的）。 */
+       但滚回来就会看到几个字还是大的）。
+       水波纹的自动生成也在这里一起点火／灭火。 */
     addEventListener('scroll', () => {
-      if (!live() && (mouse.has || chars.some(c => c.sc !== 1))) {
-        reset();
+      if (live()) {
+        if (!idleT) scheduleIdle();
+      } else {
+        clearTimeout(idleT); idleT = 0;
+        if (mouse.has || chars.some(c => c.sc !== 1) || aliveCount()) reset();
         running = false;
       }
     }, { passive: true });
@@ -891,19 +925,23 @@
     let rt = 0;
     addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(measure, 150); });
 
+    // 开场先等预加载遮罩走完（1.25s 动画 + 淡出 + 0.42s），别在遮罩背后空放波纹
+    scheduleIdle(2600);
+
     /* 调试钩子，和 __scrub() 一套思路：
-       让测试能直接问"循环还跑着吗"，而不是靠帧率间接猜。
-       "鼠标停住之后要自己停下来"这件事，只有问得出来才验得了。 */
+       让测试能直接问"循环还跑着吗、还有几圈波纹在跑"，
+       而不是靠帧率或截图间接猜。 */
     window.__welcomeFx = () => ({
       running,
-      activity: +activity.toFixed(3),
       inside,
       radius: Math.round(radius),
       chars: chars.map(c => +c.sc.toFixed(4)),
-      blobs: blobs.map(b => [Math.round(b.x), Math.round(b.y)]),
-      // 还差多远、还剩多快 —— "循环为什么不停"这种问题，只有这两个数说得清
-      residual: blobs.map(b => +Math.hypot(b.tx - b.x, b.ty - b.y).toFixed(3)),
-      speed: blobs.map(b => +Math.hypot(b.vx, b.vy).toFixed(3)),
+      rings: aliveCount(),
+      ringPos: pool.filter(el => el.__a && el.__a.playState === 'running')
+        .map(el => {
+          const m = el.style.transform.match(/translate3d\(([-\d.]+)px,\s*([-\d.]+)px/);
+          return m ? [Math.round(+m[1]), Math.round(+m[2])] : null;
+        }).filter(Boolean),
     });
 
     /* 再开一个口子给测试把弹簧的阻尼调大。

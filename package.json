@@ -23,6 +23,7 @@
     "test:welcome": "node tools/test-welcome.mjs",
     "test:scroll": "node tools/test-scroll.mjs",
     "test:cssguard": "node tools/check-css-guard.mjs",
+    "test:jsguard": "node tools/check-js-guard.mjs",
     "test:encoding": "node tools/check-encoding-guard.mjs",
     "test:qtan": "node tools/test-qtan.mjs",
     "probe:nav": "node tools/probe-navspring.mjs",

@@ -604,24 +604,26 @@ check(rm.bad.length === 0, '关闭动效时没有元素被藏在透明里',
 check(rm.lines === 0, '关闭动效时标题不再被裁切', `${rm.lines} 行仍偏移`);
 check(rm.bars === 0, '关闭动效时进度条直接显示为满', `${rm.bars} 条仍收起`);
 
-/* "减少动态效果"下，欢迎页那两个效果（逐字弹起 + 流体）必须【完全不启动】。
-   不只是"看不见"：逐字那条要拆 DOM、流体那条要挂四层上千万像素的图层，
+/* "减少动态效果"下，欢迎页那两个效果（逐字弹起 + 水波纹）必须【完全不启动】。
+   不只是"看不见"：逐字那条要拆 DOM，水波纹那条会一直往一个满屏图层里画圈，
    在明确要求减少动效的机器上跑这些，本身就是错的。
-   检查拆字有没有发生，是最直接的证据 —— 拆了 DOM 就一定会在那儿。 */
+   验的是"有没有真的在动"：拆字发生没有、有没有动画在跑。 */
 const rmFx = await rp.evaluate(() => ({
   hooked: typeof window.__welcomeFx === 'function',
   chars: document.querySelectorAll('.welcome__ch').length,
   split: document.querySelectorAll('.welcome__line > span.is-split').length,
-  fluidLive: document.querySelector('#fluid')?.classList.contains('is-live'),
-  fluidOpacity: getComputedStyle(document.querySelector('#fluid')).opacity,
+  rings: [...document.querySelectorAll('#wave i')]
+    .filter(el => el.getAnimations().length).length,
+  waveInk: [...document.querySelectorAll('#wave i')]
+    .filter(el => +getComputedStyle(el).opacity > .01).length,
   strokeOnLine: getComputedStyle(document.querySelector('.welcome__line--outline > span'))
     .webkitTextStrokeWidth,
 }));
 check(!rmFx.hooked && rmFx.chars === 0 && rmFx.split === 0,
   '关闭动效时不启动逐字效果（DOM 都没拆）',
   `hook=${rmFx.hooked} 拆了 ${rmFx.chars} 个字`);
-check(rmFx.fluidOpacity === '0' && !rmFx.fluidLive, '关闭动效时流体层不出现',
-  `opacity=${rmFx.fluidOpacity}`);
+check(rmFx.rings === 0 && rmFx.waveInk === 0, '关闭动效时水波纹一圈都不跑',
+  `在跑的 ${rmFx.rings} 个 / 可见的 ${rmFx.waveInk} 个`);
 // 不拆字的时候，描边必须仍然画在整行上 —— 拆与不拆是两条路，两条都得对
 check(rmFx.strokeOnLine && rmFx.strokeOnLine !== '0px',
   '关闭动效时镂空描边仍然画在整行上（没拆字这条路也是好的）', rmFx.strokeOnLine);
@@ -694,7 +696,7 @@ check(mob.bad.length === 0, '手机上滚到底也没有内容被藏住',
   mob.bad.length ? [...new Set(mob.bad)].join(' ') : '全部可见');
 
 /* 手机上欢迎页那套效果必须完全不启动。
-   逐字缩放要重绘十几个上百像素的大字，流体是四层上千万像素的图层 ——
+   逐字缩放要重绘十几个上百像素的大字，水波纹会一直往满屏图层里画圈 ——
    在手机上跑这些就是拿续航换一个看不见的效果。
    同时要确认【不拆字那条路】是好的：描边得仍然画在整行上。 */
 const mobFx = await mp.evaluate(() => {
@@ -707,12 +709,13 @@ const mobFx = await mp.evaluate(() => {
     stroke: cs.webkitTextStrokeWidth,
     strokeColor: cs.webkitTextStrokeColor,
     fill: after.content,
-    fluidOpacity: getComputedStyle(document.querySelector('#fluid')).opacity,
+    rings: [...document.querySelectorAll('#wave i')]
+      .filter(el => el.getAnimations().length).length,
   };
 });
 check(!mobFx.hooked && mobFx.chars === 0, '手机上不启动逐字效果（省电，DOM 也没拆）',
   `hook=${mobFx.hooked} 拆了 ${mobFx.chars} 个字`);
-check(mobFx.fluidOpacity === '0', '手机上流体层不出现', `opacity=${mobFx.fluidOpacity}`);
+check(mobFx.rings === 0, '手机上一圈水波纹都不跑', `在跑的 ${mobFx.rings} 个`);
 check(mobFx.stroke !== '0px' && mobFx.fill !== 'none',
   '手机上镂空描边和填充层都在整行上（没拆字这条路没被改坏）',
   `${mobFx.stroke} ${mobFx.strokeColor} / ::after=${mobFx.fill}`);

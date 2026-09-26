@@ -15,6 +15,7 @@
  */
 import { mkdir, rm, cp, writeFile, readFile, readdir, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -148,6 +149,28 @@ if (depth !== 0 || badAt >= 0) {
   process.exit(1);
 }
 console.log(`  CSS 括号配平 ✓`);
+
+/* ---------- JS 语法检查 ----------
+   和上面那条括号检查是同一类问题：脚本里一个语法错误会让【整个 IIFE】
+   一行都不执行 —— 页面照常显示、控制台也不一定有明显提示，
+   只是所有交互静静地全都没了。
+
+   这次真踩到了：在同一个作用域里重复声明了一个 running
+   （上面 const running = el => ...，下面 let running = false），
+   SyntaxError 直接把整份脚本废掉，表现是"欢迎页一圈波纹都没有"。
+   构建当时是绿的，因为括号守卫只看 CSS。
+
+   用 node --check 而不是自己写解析：这是运行时自己的判断，最权威。 */
+try {
+  execFileSync(process.execPath, ['--check', path.join(DIST, 'assets/js/main.js')],
+    { stdio: ['ignore', 'pipe', 'pipe'] });
+  console.log('  JS 语法 ✓');
+} catch (e) {
+  const msg = String((e.stderr || e.stdout || '')).trim().split('\n').slice(0, 6).join('\n  ');
+  console.error('\n✗ assets/js/main.js 语法错误 —— 整份脚本都不会执行，所有交互会静静地失效');
+  console.error('  ' + msg + '\n');
+  process.exit(1);
+}
 
 /* ---------- 源文件乱码检查 ----------
    这一条同样是被真实事故逼出来的，而且就发生在这次改动里：

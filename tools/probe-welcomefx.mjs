@@ -1,8 +1,8 @@
 /**
- * probe-welcomefx.mjs — 欢迎页两个新效果的目视检查
+ * probe-welcomefx.mjs — 欢迎页两个效果的目视检查
  *
- * 逐字弹起和流体都是"好不好看"的问题，断言只能证明它动了。
- * 这里把几个关键时刻拍下来：静止 / 悬停到某个字上 / 横扫的中途 / 纯色区的流体。
+ * 逐字弹起和"好不好看"有关，水波纹和"像不像水"有关，断言都只能证明它动了。
+ * 这里把几个关键时刻拍下来：静止时的随机波纹 / 鼠标扫过时的尾迹 / 标题被指着的峰值。
  *
  * 用法: node tools/probe-welcomefx.mjs [url]
  */
@@ -25,169 +25,130 @@ const browser = await puppeteer.launch({
 const page = await browser.newPage();
 await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 2 });
 await page.goto(URL_BASE, { waitUntil: 'networkidle0', timeout: 60000 });
-await sleep(3000);
+await sleep(3600);
 
 mkdirSync(SHOTS, { recursive: true });
 const shot = f => page.screenshot({ path: `${SHOTS}/${f}` });
 
-/* 把鼠标放到第 i 个字上 */
-const charAt = i => page.evaluate(idx => {
-  const el = document.querySelectorAll('.welcome__ch')[idx];
-  if (!el) return null;
-  const r = el.getBoundingClientRect();
-  return { x: r.left + r.width / 2, y: r.top + r.height / 2, ch: el.textContent };
-}, i);
-
-const scales = () => page.evaluate(() => {
-  const out = {};
-  document.querySelectorAll('.welcome__ch').forEach((el, i) => {
-    const m = el.style.transform.match(/scale\(([\d.]+)\)/);
-    out[i + ':' + el.textContent] = m ? +m[1] : 1;
-  });
-  return out;
-});
-
-const n = await page.evaluate(() => document.querySelectorAll('.welcome__ch').length);
-console.log(`标题拆成 ${n} 个字`);
-
-/* 核对"字中心"的算法 —— main.js 里用的是
-     bodyRect.left + el.offsetLeft + el.offsetWidth / 2
-   这里把它和真实的 getBoundingClientRect 中心并排打出来。
-   对不上的话，影响半径就是照着错误的位置在算，效果会几乎看不见。 */
-const centers = await page.evaluate(() => {
-  const b = document.querySelector('.welcome__body').getBoundingClientRect();
-  return [...document.querySelectorAll('.welcome__ch')].map(el => {
+/* 当前活着的波纹：位置、进度、实际渲染直径、透明度。
+   直接从 DOM 和 WAAPI 读，不靠生产代码开洞。 */
+const rings = () => page.evaluate(() =>
+  [...document.querySelectorAll('#wave i')].map(el => {
+    const a = el.getAnimations()[0];
+    if (!a) return null;
     const r = el.getBoundingClientRect();
     return {
-      ch: el.textContent,
-      offL: el.offsetLeft, offT: el.offsetTop,
-      offW: el.offsetWidth, offH: el.offsetHeight,
-      parent: el.offsetParent ? el.offsetParent.className : '(null)',
-      calcX: Math.round(b.left + el.offsetLeft + el.offsetWidth / 2),
-      calcY: Math.round(b.top + el.offsetTop + el.offsetHeight / 2),
-      realX: Math.round(r.left + r.width / 2),
-      realY: Math.round(r.top + r.height / 2),
+      x: Math.round(r.left + r.width / 2),
+      y: Math.round(r.top + r.height / 2),
+      d: Math.round(r.width),
+      op: +getComputedStyle(el).opacity,
+      p: +(a.effect.getComputedTiming().progress ?? 1).toFixed(3),
+      state: a.playState,
     };
-  });
-});
-console.log('  字中心核对（算法 vs 真实）:');
-for (const c of centers) {
-  const dx = c.calcX - c.realX, dy = c.calcY - c.realY;
-  console.log(`    ${c.ch}  offset(${c.offL},${c.offT}) ${c.offW}×${c.offH}  ` +
-    `offsetParent=${c.parent}  算(${c.calcX},${c.calcY}) 实(${c.realX},${c.realY})  ` +
-    `偏差(${dx},${dy})`);
+  }).filter(Boolean));
+
+console.log('════ 一、鼠标不动：随机波纹应当自己冒出来 ════');
+const seen = [];
+for (let i = 0; i < 8; i++) {
+  await sleep(750);
+  const r = await rings();
+  const live = r.filter(x => x.state === 'running');
+  console.log(`  t=${((i + 1) * 0.75).toFixed(2)}s  活跃 ${live.length} 圈  ` +
+    live.map(x => `(${x.x},${x.y}) ⌀${x.d} p=${x.p} op=${x.op}`).join('  '));
+  seen.push(...live.map(x => [x.x, x.y]));
 }
-
-await shot('fx-0-idle.png');
-console.log('  静止:', JSON.stringify(await scales()));
-
-/* --- 悬停到第 3 个字上，抓弹簧峰值附近 --- */
-const c3 = await charAt(3);
-console.log(`\n悬停到「${c3.ch}」 (${Math.round(c3.x)}, ${Math.round(c3.y)})`);
-await page.mouse.move(c3.x, c3.y, { steps: 12 });
-await sleep(210);                       // 176ms 是弹簧峰值
-await shot('fx-1-peak.png');
-console.log('  峰值附近:', JSON.stringify(await scales()));
-
-await sleep(700);
-await shot('fx-2-settled.png');
-console.log('  停稳:', JSON.stringify(await scales()));
-
-/* --- 横扫：从最左扫到最右，中途抓一帧，看"逐个" --- */
-console.log('\n横扫标题...');
-const first = await charAt(0);
-const last = await charAt(n - 1);
-await page.mouse.move(first.x, first.y, { steps: 4 });
-await sleep(400);
-await page.mouse.move(last.x, last.y, { steps: 34 });   // 慢速扫过
-await sleep(120);
-await shot('fx-3-sweep.png');
-console.log('  横扫中途:', JSON.stringify(await scales()));
-
-/* --- 纯色区：把鼠标移到标题下方的空白处，抓流体 --- */
-console.log('\n移到纯色区...');
-await page.mouse.move(200, 300, { steps: 10 });
-await sleep(120);
-await page.mouse.move(1150, 640, { steps: 26 });
-await sleep(190);                       // 甩出去的途中才有拉伸
-await shot('fx-4-fluid.png');
-const blobs = await page.evaluate(() => [...document.querySelectorAll('#fluid i')].map(el =>
-  el.style.transform));
-console.log('  四团色斑的原始 transform:');
-for (const [i, tf] of blobs.entries()) console.log(`    ${i}: ${tf || '(空)'}`);
-
-/* 注意逗号后面的 \s* —— el.style.transform 读回来是 CSSOM 【规范化】过的值，
-   逗号后面会自动补一个空格：写成 scale(1.006, 0.996)。
-   不写 \s* 的话正则会静默匹配不上，读出来全是 undefined，
-   看起来像"形变没生效"，其实只是没解析到。 */
-const parsed = blobs.map(tf => ({
-  x: (tf.match(/translate3d\(([-\d.]+)px/) || [])[1],
-  sx: (tf.match(/scale\(([-\d.]+),\s*([-\d.]+)\)/) || [])[1],
-  sy: (tf.match(/scale\(([-\d.]+),\s*([-\d.]+)\)/) || [])[2],
-}));
-const xs = parsed.map(p => +p.x).filter(Number.isFinite);
-if (xs.length) console.log(`  尾迹展开宽度: ${(Math.max(...xs) - Math.min(...xs)).toFixed(0)}px`);
-console.log('  形变(拉伸): ' + parsed.map((p, i) =>
-  `${i}:${p.sx ?? '?'}×${p.sy ?? '?'}`).join('  '));
-
-await sleep(900);
-await shot('fx-5-fluid-settled.png');
-
-/* 鼠标停住之后循环必须自己停下来 —— 这是性能承诺，不是观感问题。
-   靠 __welcomeFx() 直接问，不靠帧率间接猜。 */
-for (const wait of [1500, 3000, 5000]) {
-  await sleep(wait === 1500 ? 1500 : 1500);
-  const fx = await page.evaluate(() => window.__welcomeFx());
-  console.log(`  停手 ${wait}ms 后: running=${fx.running} activity=${fx.activity} ` +
-    `字=${fx.chars.map(v => v.toFixed(3)).join(',')}`);
+if (seen.length > 2) {
+  const xs = seen.map(p => p[0]), ys = seen.map(p => p[1]);
+  console.log(`  共出现 ${seen.length} 圈，横跨 x ${Math.min(...xs)}~${Math.max(...xs)}  ` +
+    `y ${Math.min(...ys)}~${Math.max(...ys)}`);
+  console.log(`  不同位置数 ${new Set(seen.map(p => p.join(','))).size}/${seen.length}` +
+    '（越接近 1 越随机）');
 }
+await shot('fx-0-idle-ripples.png');
 
-const running = await page.evaluate(() => window.__welcomeFx().running);
-console.log(running ? '  ✗ 循环还在跑' : '  ✓ 循环已经自己停了');
+console.log('\n════ 二、鼠标移动：波纹沿路径散开 ════');
+await page.mouse.move(180, 700, { steps: 6 });
+await sleep(300);
+await page.mouse.move(1240, 300, { steps: 30 });   // 斜着扫过
+await sleep(140);
+const tr = (await rings()).filter(x => x.state === 'running');
+console.log(`  扫过之后有 ${tr.length} 圈在跑：`);
+for (const r of tr) console.log(`    (${r.x},${r.y}) ⌀${r.d} p=${r.p} op=${r.op}`);
+await shot('fx-1-trail.png');
 
-console.log(`\n截图在 ${SHOTS}/fx-*.png`);
-
-/* 裁一张标题的特写，方便看清"逐个" */
-const box = await page.evaluate(() => {
-  const r = document.querySelector('.welcome__title').getBoundingClientRect();
-  return { left: Math.max(0, r.left - 30), top: Math.max(0, r.top - 30),
-    width: Math.min(1440, r.width + 60), height: Math.min(900, r.height + 60) };
-});
-for (const f of ['fx-1-peak', 'fx-3-sweep']) {
-  const buf = await sharp(`${SHOTS}/${f}.png`).extract({
-    left: Math.round(box.left * 2), top: Math.round(box.top * 2),
-    width: Math.round(box.width * 2), height: Math.round(box.height * 2),
-  }).png().toBuffer();
-  await sharp(buf).toFile(`${SHOTS}/${f}-title.png`);
-}
-console.log('并生成了 fx-1-peak-title.png / fx-3-sweep-title.png');
-
-/* 紧贴被悬停的那个字做一张前后对比。
-   整体缩略图上根本判断不出 16% 的差别 —— 那种图只能用来确认"没坏"，
-   确认不了"够不够明显"。 */
+console.log('\n════ 三、波纹是不是在"扩散"（同一圈前后对比）════');
 {
-  const c = await page.evaluate(() => {
-    const el = document.querySelectorAll('.welcome__ch')[3];
-    const r = el.getBoundingClientRect();
-    return { x: Math.round(r.left - 26), y: Math.round(r.top - 26),
-      w: Math.round(r.width + 52), h: Math.round(r.height + 52) };
-  });
-  await page.mouse.move(8, 860);
-  await sleep(900);
-  const before = await page.screenshot();
-  await page.mouse.move(c3.x, c3.y, { steps: 10 });
-  await sleep(230);
-  const after = await page.screenshot();
-
-  const cut = s => sharp(s).extract({
-    left: c.x * 2, top: c.y * 2, width: c.w * 2, height: c.h * 2,
-  }).resize({ width: c.w * 3, kernel: 'nearest' }).png().toBuffer();
-  const [a, b] = [await cut(before), await cut(after)];
-  const m = await sharp(a).metadata();
-  await sharp({ create: { width: m.width, height: m.height * 2 + 20, channels: 4, background: '#111112' } })
-    .composite([{ input: a, left: 0, top: 0 }, { input: b, left: 0, top: m.height + 20 }])
-    .toFile(`${SHOTS}/fx-compare.png`);
-  console.log('fx-compare.png 已生成（上：静止  下：悬停到该字）');
+  // 只留一圈：把鼠标停住，等其它圈散尽，然后盯着新冒出来的那一圈
+  await page.mouse.move(700, 450);
+  await sleep(2600);
+  const before = (await rings()).filter(x => x.state === 'running');
+  if (!before.length) {
+    console.log('  （这一刻没有活跃的圈，等下一圈）');
+    await sleep(1200);
+  }
+  const a0 = (await rings()).filter(x => x.state === 'running')[0];
+  if (a0) {
+    console.log(`  第 1 次: (${a0.x},${a0.y}) ⌀${a0.d} op=${a0.op} p=${a0.p}`);
+    await sleep(420);
+    const a1 = (await rings()).find(x => Math.abs(x.x - a0.x) < 3 && Math.abs(x.y - a0.y) < 3);
+    if (a1) {
+      console.log(`  第 2 次: (${a1.x},${a1.y}) ⌀${a1.d} op=${a1.op} p=${a1.p}`);
+      console.log(`  → 直径 ${a0.d} → ${a1.d}（${a1.d > a0.d ? '变大 ✓' : '没变大 ✗'}）  ` +
+        `透明度 ${a0.op} → ${a1.op}（${a1.op < a0.op ? '变淡 ✓' : '没变淡'}）`);
+    } else {
+      console.log('  （这一圈已经结束）');
+    }
+  }
 }
+
+console.log('\n════ 四、标题逐字（回归确认）════');
+const chars = await page.evaluate(() => [...document.querySelectorAll('.welcome__ch')]
+  .map(el => {
+    const r = el.getBoundingClientRect();
+    return { ch: el.textContent, x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+  }));
+console.log(`  拆成 ${chars.length} 个字`);
+const c3 = chars[3];
+await page.mouse.move(20, 860);
+await sleep(700);
+await page.mouse.move(c3.x, c3.y, { steps: 10 });
+await sleep(200);
+const sc = await page.evaluate(() => window.__welcomeFx().chars);
+console.log(`  悬停「${c3.ch}」: ${chars.map((c, i) => c.ch + sc[i].toFixed(3)).join(' ')}`);
+await shot('fx-2-char-peak.png');
+
+/* 出一张紧贴被悬停那个字的对比图 */
+const box = await page.evaluate(() => {
+  const el = document.querySelectorAll('.welcome__ch')[3];
+  const r = el.getBoundingClientRect();
+  return { x: Math.round(r.left - 26), y: Math.round(r.top - 26),
+    w: Math.round(r.width + 52), h: Math.round(r.height + 52) };
+});
+await page.mouse.move(20, 860);
+await sleep(900);
+const beforeShot = await page.screenshot();
+await page.mouse.move(c3.x, c3.y, { steps: 10 });
+await sleep(230);
+const afterShot = await page.screenshot();
+const cut = s => sharp(s).extract({ left: box.x * 2, top: box.y * 2, width: box.w * 2, height: box.h * 2 })
+  .resize({ width: box.w * 3, kernel: 'nearest' }).png().toBuffer();
+const [ia, ib] = [await cut(beforeShot), await cut(afterShot)];
+const m = await sharp(ia).metadata();
+await sharp({ create: { width: m.width, height: m.height * 2 + 20, channels: 4, background: '#111112' } })
+  .composite([{ input: ia, left: 0, top: 0 }, { input: ib, left: 0, top: m.height + 20 }])
+  .toFile(`${SHOTS}/fx-compare.png`);
+
+console.log(`\n截图: ${SHOTS}/fx-0-idle-ripples.png  fx-1-trail.png  fx-2-char-peak.png  fx-compare.png`);
+
+/* 滚过一屏之后必须彻底安静下来 */
+await page.evaluate(() => window.scrollTo(0, innerHeight * 2));
+await sleep(1500);
+const after = await page.evaluate(() => ({
+  rings: window.__welcomeFx().rings,
+  running: window.__welcomeFx().running,
+  live: [...document.querySelectorAll('#wave i')].filter(el => +getComputedStyle(el).opacity > .01).length,
+}));
+console.log(`\n滚过一屏 1.5s 后: 活跃圈=${after.rings} 循环=${after.running} ` +
+  `还可见的圈=${after.live}（都应当是 0）`);
 
 await browser.close();

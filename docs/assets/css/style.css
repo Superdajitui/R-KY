@@ -409,48 +409,52 @@ em{font-style:normal}
 .welcome__grid i{border-right:1px solid rgba(17,17,18,.08)}
 .welcome__grid i:last-child{border-right:0}
 
-/* ---------- 欢迎页：流体层 ----------
-   鼠标在纯色区域滑动时，四团柔和的暗色斑跟着走 —— 不是"一个光点黏着鼠标"，
-   而是【四团跟随速度不同的色斑】叠在一起：快的先到、慢的拖在后面，
-   拉开的那一段就是流体的尾迹。每一团还按自己的速度沿运动方向拉长、
-   垂直方向压扁 —— 水滴被甩出去就是这个形状（见 main.js 第 11 节）。
+/* ---------- 欢迎页：水波纹层 ----------
+   一个环从一点向外扩散、同时变淡 —— 就是水面上的一圈涟漪。
+   鼠标不动时随机位置自己冒（像雨点落下来），
+   鼠标移动时沿着路径一路留下波纹往外晕开（见 main.js 第 11 节）。
 
-   方案是刻意选的，不是图省事：
-   真正的流体（SVG 的 feTurbulence + feDisplacementMap、或者 canvas 里解
-   纳维-斯托克斯方程）每一帧都要重新过滤整屏像素。这个站之前已经因为
-   手机上全屏混合模式 + 大面积模糊卡过一次，那还是静态的。
-   这里全程只有 transform，图层在 GPU 上合成，主线程每帧只写几个数字。
-   手机上直接不启用。
+   为什么是"环"而不是"一团跟着鼠标的色斑"：
+   跟着走的色斑读起来是一个影子/光斑，只有【从某一点向外扩散】才像水面。
+   扩散本身就是"晕开"—— 环越铺越大、同时越铺越淡。
 
-   尺寸夹上限是算过显存的：60vmax 在 2560 宽的屏上是 1536px，
-   四层就是 37MB；夹到 760px 之后最多 9MB。
+   环的剖面直接烘进 radial-gradient，不用 filter:blur()：
+   模糊滤镜每帧都要重新过滤整层像素（这个站已经因为手机上全屏模糊卡过一次），
+   而渐变是一次栅格化、之后只做缩放和透明度，全程走合成器。
 
-   尺寸也是刻意压到 40vmax 的：一开始用 58vmax，四团直径 1100px
-   只散开 135px，几乎完全重叠成一块 —— 看着像"一团跟着鼠标的影子"，
-   不像液体。现在四团各自还有大小差（一大三小，见 main.js），
-   叠出来的轮廓才有内部结构。 */
-.welcome{--blob:clamp(340px,40vmax,760px)}
-.welcome__fluid{
-  position:absolute;inset:0;z-index:0;pointer-events:none;
-  /* 第一次移动鼠标之前不显示，否则四团色斑会先堆在视口中心再飞过去 */
-  opacity:0;transition:opacity .7s var(--ease);
-}
-.welcome__fluid.is-live{opacity:1}
-.welcome__fluid i{
+   环的粗细会随扩散一起变粗。物理上真实的水波是越扩越细，
+   但这里要的正是"晕开"：变粗 + 变淡 两个一起，才像墨滴在水里散开。
+   想反过来（越扩越细）就得每帧改渐变的角度，那是每帧重画整层，不值 ——
+   实测下来变粗的观感反而是对的。
+
+   尺寸夹上限是算过显存的：池子里 16 个环，每个最多 560px 见方。 */
+.welcome{--wave:clamp(240px,30vmax,560px)}
+.welcome__wave{position:absolute;inset:0;z-index:0;pointer-events:none}
+.welcome__wave i{
   position:absolute;left:0;top:0;
-  width:var(--blob);height:var(--blob);
+  width:var(--wave);height:var(--wave);
   /* 负 margin 把原点从左上角挪到圆心，
      这样 JS 写的 translate3d 就是"圆心要去的坐标"，不用再减半径 */
-  margin:calc(var(--blob) / -2) 0 0 calc(var(--blob) / -2);
+  margin:calc(var(--wave) / -2) 0 0 calc(var(--wave) / -2);
   border-radius:50%;
+  /* 剖面：中间全空（涟漪是一圈，不是一坨），约 4/5 处是环脊，向外淡出。
+     环脊内外各留一段渐隐，边缘才不会是硬边。
+
+     环带的宽度是调了两轮才定的，两个方向都踩过：
+     第一版 58%~88%（占半径 30%）—— 铺到 ⌀400 时环带有 76px 宽，
+       拍出来是一圈粗带子，像甜甜圈，不像水波；
+     再往前一版更窄更淡 —— 只有几道似有若无的弧，那不叫效果，叫噪点。
+     现在 76%~92%（占半径 16%）：铺大之后肉眼是一条柔和的涟漪线。 */
   background:radial-gradient(circle closest-side,
-    rgba(122,168,0,.50) 0%,
-    rgba(122,168,0,.36) 30%,
-    rgba(122,168,0,.20) 52%,
-    rgba(122,168,0,.07) 70%,
-    rgba(122,168,0,0) 88%);
-  will-change:transform;
-  transform:translate3d(-9999px,-9999px,0);
+    rgba(106,148,0,0)    0%,
+    rgba(106,148,0,0)   66%,
+    rgba(106,148,0,.20) 76%,
+    rgba(96,134,0,.58)  84%,
+    rgba(106,148,0,.18) 92%,
+    rgba(106,148,0,0)  100%);
+  /* 池子里的元素是复用的：动画跑完停在 opacity:0（fill:forwards），
+     这里兜底 —— 没在动的环必须完全不可见 */
+  opacity:0;
 }
 
 .welcome__top{

@@ -60,10 +60,14 @@
      因为 position:fixed，滚回顶部还能再看到它。
      无脚本时由上面的 <noscript> 直接隐藏。 -->
 <div class="welcome" id="welcome">
-  <!-- 流体层：四团跟随速度不同的柔和色斑，鼠标滑动时拖出尾迹。
+  <!-- 水波纹层：一圈圈向外扩散的环。
+       鼠标不动时在随机位置自己冒（像雨点落在水面上），
+       鼠标移动时沿着路径留下波纹、往外晕开。
        放在网格线【下面】—— 网格只有 8% 不透明度，压在上面才不会被糊掉。
-       纯装饰，aria-hidden；手机上不启用。 -->
-  <div class="welcome__fluid" id="fluid" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+       十六个 <i> 是复用池：波纹由 Web Animations 驱动，
+       JS 只在"该冒一个"的时候跑一次，没有常驻的 rAF 循环。
+       纯装饰，aria-hidden；手机和"减少动效"下不启用。 -->
+  <div class="welcome__wave" id="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
 
   <div class="welcome__grid" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 
