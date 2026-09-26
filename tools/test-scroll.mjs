@@ -385,7 +385,49 @@ console.log('\n════ 跑马灯：首尾相接、全程不露白 ═══
   check(sideCount === 3, '热爱区是三行（上下排开）', `${sideCount} 行`);
 }
 
-/* --- 断言 8：停下来之后 raf 循环要停 --- */
+/* --- 断言 9：悬停导航时文字不能变成乱码 --- */
+/*
+   曾经有个"逐字解码"效果：鼠标移上去，标签会从随机拉丁字母里解出来。
+   它在长英文单词上好看，但导航是【两个字的中文】，逐帧实测是
+     技<  技I  技C  技*  技O  技5  技能 …
+   前一半时间都显示成「技V」这种"汉字 + 乱码字母"，看着像错字。
+   用户反馈后已移除。这条检查直接盯着"悬停过程中标签文字有没有变过"。
+*/
+{
+  const navHover = await page.evaluate(async () => {
+    const links = [...document.querySelectorAll('.nav__links a')];
+    const before = links.map(a => a.textContent.trim());
+    // 派发 mouseenter，再在动画中途取样
+    links.forEach(a => a.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true })));
+    const mid = [];
+    for (const d of [80, 160, 260, 400]) {
+      await new Promise(r => setTimeout(r, d === 80 ? 80 : 100));
+      mid.push(links.map(a => a.textContent.trim()).join('|'));
+    }
+    links.forEach(a => a.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true })));
+    return { before, mid };
+  });
+  const changed = navHover.mid.filter(s => s !== navHover.before.join('|'));
+  check(changed.length === 0, '悬停导航项时文字不会变成乱码',
+    changed.length ? `取样到异常内容：${changed[0]}` : `${navHover.before.length} 项文字全程不变`);
+
+  // 自检：人为把某个标签改成"汉字 + 乱码字母"，确认这条断言抓得住
+  const caught = await page.evaluate(async () => {
+    const a = document.querySelector('.nav__links a');
+    const span = a.querySelector('span');
+    const orig = span.textContent;
+    const before = [...document.querySelectorAll('.nav__links a')].map(x => x.textContent.trim()).join('|');
+    span.textContent = orig[0] + 'V';                 // 复现「技V」
+    await new Promise(r => setTimeout(r, 40));
+    const mid = [...document.querySelectorAll('.nav__links a')].map(x => x.textContent.trim()).join('|');
+    span.textContent = orig;
+    return { before, mid, differs: before !== mid };
+  });
+  check(caught.differs, '人为把标签改成「技V」后检查能抓到（证明这条断言有效）',
+    caught.differs ? '✓ 抓到了' : '✗ 没抓到');
+}
+
+/* --- 断言 10：停下来之后 raf 循环要停、不留内联残留 --- */
 await sleep(1400);
 const settle = await page.evaluate(() => document.querySelector('.marquee__track').style.transform);
 check(!settle || settle === 'none', '滚动结束后脚本没有残留内联位移', settle || 'none');

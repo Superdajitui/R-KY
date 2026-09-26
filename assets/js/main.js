@@ -540,37 +540,22 @@
   }
 
   /* ---------------------------------------------------------
-     7. 导航文字乱码效果（悬停时）
+     7. 导航悬停的"乱码"效果 —— 已移除
+     ---------------------------------------------------------
+     原来鼠标移上去，标签会逐字从随机拉丁字母/符号里"解码"出来。
+     这个效果在长英文单词上好看，但导航标签是【两个字的中文】，
+     实测逐帧是这样（12 帧、每帧 30ms）：
+
+       技<   技I   技C   技*   技O   技5   技能  技能 …
+
+     前一半时间都显示成「技V」这种"一个汉字 + 一个乱码字母"，
+     看着不像效果，像一个错字。用户就是这么反馈的。
+
+     导航本来就有一套完整的悬停反馈（文字变霓虹、药丸底色、
+     下划线从中间展开），乱码是叠在上面多余的一层，
+     去掉之后反而干净。要recover的话，把随机字符表换成汉字、
+     并且只在 4 字以上的标签上启用，才不会像错字。
      --------------------------------------------------------- */
-  const GLYPHS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#*<>/\\';
-
-  function scramble(el) {
-    if (reduce) return;
-    const target = el.dataset.orig || (el.dataset.orig = el.textContent);
-    // 锁住宽度，避免中文和拉丁字符宽度差导致导航抖动
-    if (!el.dataset.w) {
-      el.dataset.w = '1';
-      el.style.display = 'inline-block';
-      el.style.width = el.getBoundingClientRect().width + 'px';
-    }
-    clearInterval(el._t);
-    let frame = 0;
-    const total = 12;
-    el._t = setInterval(() => {
-      frame++;
-      const revealed = (frame / total) * target.length;
-      el.textContent = Array.from(target).map((ch, i) => {
-        if (i < revealed || ch === ' ') return ch;
-        return GLYPHS[Math.floor(Math.random() * GLYPHS.length)];
-      }).join('');
-      if (frame >= total) { clearInterval(el._t); el.textContent = target; }
-    }, 30);
-  }
-
-  $$('[data-scramble]').forEach(el => {
-    const host = el.closest('a') || el;
-    host.addEventListener('mouseenter', () => scramble(el));
-  });
 
   /* ---------------------------------------------------------
      8. 磁吸按钮：鼠标靠近时轻微吸附
