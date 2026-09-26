@@ -339,13 +339,16 @@ if (fxReady) {
   /* 显眼程度 —— "太不明显了"这个反馈必须变成一个能守住的数。
      做法：挑一个正在跑的环，以它为中心裁一块，统计每个像素与霓虹底色的色差。
      峰值色差就是波脊相对底色有多亮。低于 15% 基本就是"看不出有东西"。
-     （曾经掉到过这里：主峰 .58 再乘动画的 0.28~0.62，有效透明度只剩 0.16~0.36。） */
+
+     采样取几次里最亮的一次，不是只采一帧：环的透明度是随时间涨落的，
+     恰好抽到一个正在淡出的，就会量出 15% 这种擦边的数，
+     让人分不清是"效果变淡了"还是"刚好赶上它快没了"。
+     （曾经真的掉下去过：主峰 .58 再乘动画的 0.28~0.62，有效透明度只剩 0.16~0.36。） */
   {
-    const top = (await rings()).filter(r => r.state === 'running')
-      .sort((a, b) => b.op - a.op)[0];
-    if (!top) {
-      check(false, '静态波纹足够明显', '这一刻没有活跃的环，没法量');
-    } else {
+    const measure = async () => {
+      const top = (await rings()).filter(r => r.state === 'running')
+        .sort((a, b) => b.op - a.op)[0];
+      if (!top) return null;
       const d = Math.max(140, Math.round(top.d * 1.15));
       const box = {
         left: Math.max(0, Math.min(1440 - d, top.x - d / 2)),
@@ -374,18 +377,31 @@ if (fxReady) {
       let peak = 0, over = 0, total = 0;
       for (let i = 0; i < data.length; i += info.channels) {
         const r = data[i], g = data[i + 1], b = data[i + 2];
-        if (.299 * r + .587 * g + .114 * b < bgLum) { total++; continue; }  // 底色或更暗 → 不看
+        if (.299 * r + .587 * g + .114 * b < bgLum) { total++; continue; }
         const dr = r - 210, dg = g - 255, db = b;
         const v = Math.sqrt(dr * dr + dg * dg + db * db) / 441.7;
         if (v > peak) peak = v;
         if (v > .06) over++;
         total++;
       }
-      console.log(`  最明显的环: ⌀${top.d} 当前不透明度 ${top.op.toFixed(2)}  ` +
-        `峰值色差 ${(peak * 100).toFixed(1)}%  受影响面积 ${(over / total * 100).toFixed(1)}%`);
-      check(peak > .15, '静态波纹足够明显（峰值色差 > 15%）',
-        `${(peak * 100).toFixed(1)}%`);
-      check(over / total > .01, '波纹覆盖了可感知的一小块面积', `${(over / total * 100).toFixed(1)}%`);
+      return { peak, area: over / total, d: top.d, op: top.op };
+    };
+
+    let best = null;
+    for (let i = 0; i < 5; i++) {
+      const m = await measure();
+      if (m && (!best || m.peak > best.peak)) best = m;
+      if (best && best.peak > .3) break;          // 已经够亮，不用再等
+      await sleep(420);
+    }
+    if (!best) {
+      check(false, '静态波纹足够明显', '几次采样都没有活跃的环，没法量');
+    } else {
+      console.log(`  最明显的环: ⌀${best.d} 峰值那刻不透明度 ${best.op.toFixed(2)}  ` +
+        `峰值色差 ${(best.peak * 100).toFixed(1)}%  受影响面积 ${(best.area * 100).toFixed(1)}%`);
+      check(best.peak > .15, '静态波纹足够明显（峰值色差 > 15%）',
+        `${(best.peak * 100).toFixed(1)}%`);
+      check(best.area > .01, '波纹覆盖了可感知的一小块面积', `${(best.area * 100).toFixed(1)}%`);
     }
   }
 

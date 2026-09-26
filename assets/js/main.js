@@ -791,7 +791,10 @@
             // 乘下来正好是一层几乎察觉不到的涌动
             Object.assign(at(grow * .62), { opacity: .75, offset: .42 }),
             Object.assign(at(grow), { opacity: 0 }),
-          ], { duration: 6200 + Math.random() * 4800,
+          /* 时长 7~12s：必须稳稳慢过表面层的两倍。
+             一开始写的是 6.2~11s，线上就卡在 6.3s vs 表面 3.2s —— 差 2 倍的门槛擦边没过。
+             "分层"的关键是两层节奏拉得足够开，余量不够就等于没分开，所以这里留足。 */
+          ], { duration: 7000 + Math.random() * 5000,
             easing: 'cubic-bezier(.3,.5,.4,1)', fill: 'forwards' });
           el.__a = a;
           a.onfinish = () => { a.cancel(); if (el.__a === a) el.__a = null; };
@@ -818,14 +821,14 @@
            全都差不多重的话，画面是一层平均的噪，没有主次。
            下限量抬过一次：原来 .28 起步，再乘渐变的 .90 之后仍然很淡，
            用户反馈"鼠标静止时的随机波纹太不明显"。 */
-        ring(x, y, 2200 + Math.random() * 1200, .45 + Math.random() * .6,
+        ring(x, y, 2200 + Math.random() * 1000, .45 + Math.random() * .6,
           .42 + Math.random() * .46);
         // 偶尔再来一滴挨着的，像先后落下的两个雨点
         if (Math.random() < .34) {
           setTimeout(() => {
             if (!live()) return;
             ring(x + (Math.random() - .5) * 190, y + (Math.random() - .5) * 150,
-              2000 + Math.random() * 1100, .40 + Math.random() * .5,
+              2000 + Math.random() * 900, .40 + Math.random() * .5,
               .36 + Math.random() * .4);
           }, 160 + Math.random() * 280);
         }
