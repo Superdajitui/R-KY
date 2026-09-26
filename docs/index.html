@@ -31,7 +31,7 @@
 <!-- 开场页第一眼就是中文大字，中文字体必须一起预加载，
      否则会先闪一下系统字体再换过来 -->
 <link rel="preload" href="assets/fonts/noto-sans-sc-subset.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="assets/css/style.css?v=49319c77">
+<link rel="stylesheet" href="assets/css/style.css?v=34237bf3">
 <noscript><style>
   /* 无脚本兜底：不让预加载遮罩和欢迎页挡住内容，一切静态可见。
      底部三件套和 KERRY 的每个字母都是各自入场的，漏一个就会缺一块。 */
@@ -103,6 +103,7 @@
   </a>
 
   <nav class="nav__links" aria-label="主导航">
+    <a href="#stats"><span data-scramble>档案</span></a>
     <a href="#about"><span data-scramble>关于</span></a>
     <a href="#passions"><span data-scramble>热爱</span></a>
     <a href="#work"><span data-scramble>项目</span></a>
@@ -120,12 +121,17 @@
 </header>
 
 <!-- 移动端菜单 -->
+<!-- 序号必须和正文各板块的编号一致：01 档案 / 02 关于 / 03 热爱 /
+     04 项目 / 05 技能 / 06 联系。原来漏了「档案」，导致后面全部错一位。
+     每行右侧加一个 ↗：手机上根本没有 hover，光靠变色看不出可点，
+     有个箭头才是通用的"这是链接"信号。 -->
 <div class="menu" id="menu">
-  <a href="#about"><b>01</b>关于</a>
-  <a href="#passions"><b>02</b>热爱</a>
-  <a href="#work"><b>03</b>项目</a>
-  <a href="#skills"><b>04</b>技能</a>
-  <a href="#contact"><b>05</b>联系</a>
+  <a href="#stats"><b>01</b><span>档案</span><i aria-hidden="true">↗</i></a>
+  <a href="#about"><b>02</b><span>关于</span><i aria-hidden="true">↗</i></a>
+  <a href="#passions"><b>03</b><span>热爱</span><i aria-hidden="true">↗</i></a>
+  <a href="#work"><b>04</b><span>项目</span><i aria-hidden="true">↗</i></a>
+  <a href="#skills"><b>05</b><span>技能</span><i aria-hidden="true">↗</i></a>
+  <a href="#contact"><b>06</b><span>联系</span><i aria-hidden="true">↗</i></a>
 </div>
 
 <!-- 占位：把主页顶下去一整屏，形成"主页滑上来盖住欢迎页"的效果 -->

@@ -490,6 +490,47 @@ check(mob.passionSrc.every(s => !s.includes('-700.')),
 check(mob.mobOrder.every(o => o === '文上'),
   '手机上三行都是文字在上、图片在下', mob.mobOrder.join(' / '));
 
+/* 菜单序号必须和正文板块的编号对得上。
+   这条来自用户反馈："这几个与正文序号不一样，少了个 01 档案" ——
+   菜单原来从「关于」开始编号、漏了「档案」，于是后面全部错一位。
+   编号这种东西最容易被"看起来没问题"糊弄过去，所以直接逐项比对。 */
+const menuState = await mp.evaluate(() => {
+  const secs = [...document.querySelectorAll('.sec__label')].map(p => {
+    const i = p.querySelector('i');
+    return {
+      num: i.textContent.trim(),
+      name: p.textContent.replace(i.textContent, '').trim().split('/')[0].trim(),
+    };
+  });
+  const menu = [...document.querySelectorAll('#menu a')].map(a => {
+    const href = a.getAttribute('href');
+    return {
+      num: a.querySelector('b')?.textContent.trim() || '',
+      name: a.querySelector('span')?.textContent.trim() || '',
+      href,
+      exists: !!document.querySelector(href),
+      h: Math.round(a.getBoundingClientRect().height),
+    };
+  });
+  return { secs, menu };
+});
+
+check(menuState.menu.length === menuState.secs.length,
+  '菜单项数与板块数一致', `菜单 ${menuState.menu.length} / 板块 ${menuState.secs.length}`);
+check(menuState.menu.map(m => m.num).join() === menuState.secs.map(s => s.num).join(),
+  '菜单序号与正文板块编号逐一对应',
+  `菜单 ${menuState.menu.map(m => m.num).join('/')}  板块 ${menuState.secs.map(s => s.num).join('/')}`);
+const nameMismatch = menuState.menu.filter((m, i) => menuState.secs[i] && !menuState.secs[i].name.includes(m.name));
+check(nameMismatch.length === 0, '菜单名称与对应板块对得上',
+  nameMismatch.length ? nameMismatch.map(m => m.name).join(' ') : menuState.menu.map(m => m.name).join(' / '));
+const deadAnchors = menuState.menu.filter(m => !m.exists);
+check(deadAnchors.length === 0, '每个菜单项的目标锚点都真实存在',
+  deadAnchors.length ? deadAnchors.map(m => m.href).join(' ') : `${menuState.menu.length} 个目标全部存在`);
+// 手机上靠手指点，行高低于 44px 就该报出来
+const smallRows = menuState.menu.filter(m => m.h < 44);
+check(smallRows.length === 0, '菜单每行的可点区域不小于 44px',
+  smallRows.length ? smallRows.map(m => `${m.name}=${m.h}px`).join(' ') : `最小 ${Math.min(...menuState.menu.map(m => m.h))}px`);
+
 // svh 覆盖段必须真的能被解析到。
 // 事故复盘：媒体查询提前闭合 + 一个多余的 }，让它之后的所有块失效，
 // 于是 --hero-portrait-h 落回 54vh（比 54svh 高），手机上人物变高、挡住 KERRY。

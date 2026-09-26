@@ -207,12 +207,38 @@ em{font-style:normal}
 }
 .menu.is-open{clip-path:inset(0 0 0 0)}
 .menu a{
+  position:relative;
   display:flex;align-items:baseline;gap:1rem;
   font-family:var(--f-cn);font-size:clamp(2rem,10vw,3.4rem);font-weight:800;
   padding:.35rem 0;border-bottom:1px solid var(--ink-3);
-  transition:color .3s,padding-left .4s var(--ease);
+  transition:color .3s,padding-left .4s var(--ease),transform .18s var(--ease);
+  /* 手机上没有任何 hover，点击时必须有即时反馈，否则手感是"点了没反应" */
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+/* 右侧箭头：通用的"这是链接"信号。
+   margin-left:auto 把它顶到最右，和左边的序号把整行框起来 ——
+   一眼就看得出这是一行可以点的东西，而不是一段静态文字。 */
+.menu a > i{
+  margin-left:auto;font-style:normal;font-size:.42em;line-height:1;
+  color:var(--mute-2);
+  transition:color .3s,transform .35s var(--ease);
+}
+/* 悬停/按下时底部霓虹线从左铺开，和技能条、图片下沿同一套语言 */
+.menu a::after{
+  content:'';position:absolute;left:0;bottom:-1px;height:1px;width:0;
+  background:var(--neon);transition:width .5s var(--ease);
 }
 .menu a:hover{color:var(--neon);padding-left:.6rem}
+.menu a:hover > i{color:var(--neon);transform:translate(4px,-4px)}
+.menu a:hover::after{width:100%}
+/* 按下：整行轻微右移 + 变色，给出"确实点到了"的反馈 */
+.menu a:active{color:var(--neon);transform:translateX(.35rem)}
+.menu a:active > i{color:var(--neon);transform:translate(4px,-4px)}
+.menu a:active::after{width:100%}
+/* 键盘用户也要看得见焦点，否则只有鼠标的人知道自己在哪 */
+.menu a:focus-visible{color:var(--neon);outline:none;padding-left:.6rem}
+.menu a:focus-visible::after{width:100%}
 .menu b{font-family:var(--f-display);font-size:.85rem;color:var(--neon);font-weight:400}
 
 /* ---------- 自定义光标 ---------- */
