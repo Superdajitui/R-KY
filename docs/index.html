@@ -31,7 +31,7 @@
 <!-- 开场页第一眼就是中文大字，中文字体必须一起预加载，
      否则会先闪一下系统字体再换过来 -->
 <link rel="preload" href="assets/fonts/noto-sans-sc-subset.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="assets/css/style.css?v=ba0d114c">
+<link rel="stylesheet" href="assets/css/style.css?v=49319c77">
 <noscript><style>
   /* 无脚本兜底：不让预加载遮罩和欢迎页挡住内容，一切静态可见。
      底部三件套和 KERRY 的每个字母都是各自入场的，漏一个就会缺一块。 */
@@ -282,7 +282,11 @@
   <section class="passions" id="passions">
     <div class="wrap">
       <p class="sec__label" data-reveal><i>03</i> 热爱 / PASSIONS</p>
-      <h2 class="sec__title" data-scrub="lines">赛道、取景框，<em>和一副耳机</em>。</h2>
+      <!-- 显式断成两行：这一行是 13 个字（取景框、赛道，和一副耳机。），
+           字号提到 36px 之后 430px 手机上自然折行会落在很难看的位置，
+           而且桌面版一行拉得太长。写死断点后两行分别只有 7 字和 6 字，
+           任何宽度都从容，也和有 <br> 的「关于」「联系」两块节奏一致。 -->
+      <h2 class="sec__title" data-scrub="lines">取景框、赛道，<br><em>和一副耳机</em>。</h2>
 
       <div class="passions__grid">
         <!-- 一行一个爱好，左右交错：文字 / 图片 / 图片 / 文字 / 文字 / 图片。

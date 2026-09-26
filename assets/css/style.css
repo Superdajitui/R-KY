@@ -596,7 +596,13 @@ section{position:relative;scroll-margin-top:84px}
 .sec__label i{font-family:var(--f-display);color:var(--neon);font-style:normal;letter-spacing:.05em}
 .sec__title{
   font-family:var(--f-cn);font-weight:800;line-height:1.18;
-  font-size:clamp(1.75rem,4.6vw,3.4rem);letter-spacing:-.01em;margin-bottom:3rem;
+  /* 下限从 1.75rem 提到 2.25rem：手机上 28px → 36px（+29%）。
+     4.6vw 那一档和上限 3.4rem 都没动，所以【只有窄屏变大】——
+     4.6vw 要到 782px 才追上 36px，782px 以上完全不受影响，桌面仍是 54.4px。
+     上限是按最长的两行反推的：「一束光等到刚好。」和「手上的工具箱。」都是 8 个字，
+     手机可用宽 350px → 字号上限约 44px；取 36px 实测占可用宽 82%，留了余量。
+     test-scroll 的多宽度折行检查盯着这条。 */
+  font-size:clamp(2.25rem,4.6vw,3.4rem);letter-spacing:-.01em;margin-bottom:3rem;
   /* 中文标题只能在标点处断行，不许在词中间断。
      默认行为会把「赛道、取景框，和一副耳机。」断成
      「…和一副耳 / 机。」—— 「耳机」被劈成两半，很难看。
