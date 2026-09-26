@@ -24,6 +24,7 @@
     "test:scroll": "node tools/test-scroll.mjs",
     "test:cssguard": "node tools/check-css-guard.mjs",
     "test:encoding": "node tools/check-encoding-guard.mjs",
+    "test:qtan": "node tools/test-qtan.mjs",
     "probe:nav": "node tools/probe-navspring.mjs",
     "shoot:scroll": "node tools/shoot-scroll.mjs",
     "shoot:marquee": "node tools/shoot-marquee.mjs",

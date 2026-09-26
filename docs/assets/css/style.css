@@ -65,6 +65,19 @@
   --ease:cubic-bezier(.22,1,.36,1);
   --ease-io:cubic-bezier(.65,0,.35,1);
 
+  /* ---------- Q弹弹簧 ----------
+     全站交互共用同一条物理曲线，免得每个组件各弹各的、节奏对不上。
+     值不是手调的：tools/gen-spring.mjs 按二阶欠阻尼系统的阶跃响应采样，
+     过冲多少、几毫秒到峰值、多久稳住，都是算出来的（脚本会打出曲线图）。
+       --sp-pop   ζ=0.45 ω=20  540ms   过冲 20.5%，176ms 到峰值  —— 文字、按钮"弹一下"
+       --sp-soft  ζ=0.62 ω=22  420ms   过冲  8.4%                —— 位移大的元素（照片、卡片），弹过头会晃
+       --sp-tap   按下时用：要快要稳，不能弹，否则像接触不良
+     先写"只过冲一次"的 cubic-bezier 给不支持的浏览器兜底，
+     再由下面的 @supports 换成真弹簧 —— 带回弹的那一下。 */
+  --sp-pop:cubic-bezier(.2,1.5,.4,1);
+  --sp-soft:cubic-bezier(.25,1.3,.5,1);
+  --sp-tap:cubic-bezier(.3,.7,.4,1);
+
   /* 首屏关键位置，改这几个值就能整体挪动构图。
      先用 vh 打底，支持 svh 的浏览器再由下面的 @supports 覆盖 ——
      因为 svh 不被支持时会让整个 min() 失效，进而让 height 变成 auto，
@@ -73,6 +86,15 @@
   --hero-name-bottom:28px;
   --hero-portrait-h:min(72vh,740px);
   --hero-portrait-bottom:0;
+}
+
+/* linear() 才是弹簧的真正来源：cubic-bezier 过冲一次之后就单调收敛，
+   做不出"回弹"那一下。不支持就保留上面两条降级值 —— 只弹一下，也不难看。 */
+@supports (transition-timing-function:linear(0,1)){
+  :root{
+    --sp-pop:linear(0,0.0657,0.2281,0.4387,0.6572,0.8542,1.0115,1.1213,1.1838,1.2051,1.1947,1.1632,1.1207,1.0757,1.0344,1.001,0.9773,0.9633,0.958,0.9595,0.9655,0.9741,0.9834,0.992,0.9991,1.0042,1.0073,1.0086,1);
+    --sp-soft:linear(0,0.0473,0.1631,0.3141,0.4752,0.6286,0.7634,0.8739,0.9585,1.0183,1.0564,1.0768,1.0835,1.0805,1.0714,1.0591,1.0456,1.0327,1.0212,1.0116,1.0043,0.999,0.9956,0.9937,0.9931,0.9932,0.9939,0.9949,1);
+  }
 }
 
 /* 移动端地址栏会收缩，svh 比 vh 更稳；不支持的浏览器保留上面的 vh 值 */
@@ -147,7 +169,22 @@ em{font-style:normal}
 .nav.is-stuck{background:rgba(17,17,18,.72);backdrop-filter:blur(14px);border-bottom-color:var(--ink-3)}
 .nav.is-hidden{transform:translateY(-105%)}
 
-.nav__logo{display:flex;align-items:center;gap:.7rem;font-weight:700;letter-spacing:.02em}
+.nav__logo{
+  display:flex;align-items:center;gap:.7rem;font-weight:700;letter-spacing:.02em;
+  transition-property:transform;
+  transition-duration:.3s;
+  transition-timing-function:cubic-bezier(.34,1.3,.64,1);
+}
+.nav__logo:hover{
+  transform:scale(1.05);
+  transition-duration:.54s;
+  transition-timing-function:var(--sp-pop);
+}
+.nav__logo:active{
+  transform:scale(.96);
+  transition-duration:.12s;
+  transition-timing-function:var(--sp-tap);
+}
 .nav__mark{
   display:grid;place-items:center;width:34px;height:34px;flex:none;
   background:var(--neon);color:var(--ink);
@@ -207,9 +244,28 @@ em{font-style:normal}
   padding:.78rem 1.5rem;border-radius:100px;overflow:hidden;
   font-size:.86rem;font-weight:600;letter-spacing:.01em;
   border:1px solid var(--ink-3);cursor:pointer;
-  transition:color .35s var(--ease),border-color .35s var(--ease),transform .35s var(--ease);
+  /* 磁吸效果由 main.js 往 style.transform 写内联值，所以"Q弹"只能挂在 scale 上：
+     写 transform:scale() 会被内联样式直接盖掉，等于白写。
+     scale 和 transform 是两个独立属性、会叠加，磁吸平移 + 弹性缩放互不干扰。 */
+  transition-property:color,border-color,transform,scale;
+  transition-duration:.35s,.35s,.35s,.3s;
+  transition-timing-function:var(--ease),var(--ease),var(--ease),cubic-bezier(.34,1.3,.64,1);
+}
+.btn:hover{
+  scale:1.045;
+  transition-duration:.35s,.35s,.35s,.54s;
+  transition-timing-function:var(--ease),var(--ease),var(--ease),var(--sp-pop);
+}
+.btn:active{
+  scale:.955;
+  transition-duration:.35s,.35s,.35s,.12s;
+  transition-timing-function:var(--ease),var(--ease),var(--ease),var(--sp-tap);
 }
 .btn span{position:relative;z-index:1}
+/* 霓虹底从下方推上来，是"擦除"不是"撞击"。
+   全站的擦除类动效（这条、卡片下沿、菜单下划线、技能条）都保持平滑缓动，不加弹簧：
+   给一根线加过冲，多出来的部分会被 overflow 裁掉，看不出来，等于白加；
+   弹簧留给真正有位移和缩放的地方，节奏才不会糊成一片。 */
 .btn::before{
   content:'';position:absolute;inset:0;background:var(--neon);
   transform:translateY(101%);transition:transform .45s var(--ease);
@@ -222,7 +278,25 @@ em{font-style:normal}
 .btn--ghost:hover{color:var(--ink);border-color:var(--neon)}
 .btn--big{padding:1.15rem 2.2rem;font-size:clamp(.95rem,1.6vw,1.15rem)}
 
-.nav__burger{display:none;margin-left:auto;width:42px;height:42px;background:none;border:1px solid var(--ink-3);border-radius:50%;cursor:pointer;padding:0;position:relative}
+.nav__burger{
+  display:none;margin-left:auto;width:42px;height:42px;background:none;
+  border:1px solid var(--ink-3);border-radius:50%;cursor:pointer;padding:0;position:relative;
+  transition-property:transform;
+  transition-duration:.3s;
+  transition-timing-function:cubic-bezier(.34,1.3,.64,1);
+}
+.nav__burger:hover{
+  transform:scale(1.08);
+  transition-duration:.5s;
+  transition-timing-function:var(--sp-pop);
+}
+/* 按下缩得比按钮狠一点（.88）：这个圆只有 42px，
+   缩得少看不出"捏到了"，缩得再多会有种整颗瘪下去的感觉。 */
+.nav__burger:active{
+  transform:scale(.88);
+  transition-duration:.12s;
+  transition-timing-function:var(--sp-tap);
+}
 .nav__burger i{position:absolute;left:50%;width:16px;height:1.5px;background:var(--paper);transform:translateX(-50%);transition:transform .35s var(--ease),opacity .3s}
 .nav__burger i:nth-child(1){top:17px}
 .nav__burger i:nth-child(2){top:23px}
@@ -242,7 +316,18 @@ em{font-style:normal}
   display:flex;align-items:baseline;gap:1rem;
   font-family:var(--f-cn);font-size:clamp(2rem,10vw,3.4rem);font-weight:800;
   padding:.35rem 0;border-bottom:1px solid var(--ink-3);
-  transition:color .3s,padding-left .4s var(--ease),transform .18s var(--ease);
+  /* 右移改用 transform，不再动 padding-left。
+     padding 是布局属性，每帧都要重排；整行文字又大，在手机上这一下很贵。
+     transform 只走合成器，还能顺手弹起来。
+     注意别把位移挂到 ::after 那根下划线上 —— 它是 left:0 的绝对定位元素，
+     跟着动的话线就跟着跑了。 */
+  /* 基础态就用弹簧、时长给足：
+     · 手机上按下→松手走的就是这条 —— 松手要弹回来，不能软塌塌地滑回去
+     · 桌面上悬停进入也走这条，和导航其它项节奏一致
+     按下那条单独覆盖成 --sp-tap（快而稳），两个方向的性格才分得开。 */
+  transition-property:color,transform;
+  transition-duration:.3s,.5s;
+  transition-timing-function:var(--ease),var(--sp-pop);
   /* 手机上没有任何 hover，点击时必须有即时反馈，否则手感是"点了没反应" */
   -webkit-tap-highlight-color:transparent;
   touch-action:manipulation;
@@ -260,16 +345,27 @@ em{font-style:normal}
   content:'';position:absolute;left:0;bottom:-1px;height:1px;width:0;
   background:var(--neon);transition:width .5s var(--ease);
 }
-.menu a:hover{color:var(--neon);padding-left:.6rem}
-.menu a:hover > i{color:var(--neon);transform:translate(4px,-4px)}
-.menu a:hover::after{width:100%}
-/* 按下：整行轻微右移 + 变色，给出"确实点到了"的反馈 */
-.menu a:active{color:var(--neon);transform:translateX(.35rem)}
+.menu a:hover,
+.menu a:focus-visible{
+  color:var(--neon);
+  transform:translateX(.6rem);
+}
+.menu a:hover > i,
+.menu a:focus-visible > i{color:var(--neon);transform:translate(4px,-4px)}
+.menu a:hover::after,
+.menu a:focus-visible::after{width:100%}
+/* 按下：往回缩一点 + 轻微压扁，给"确实点到了"的反馈。
+   位移比 hover 小是故意的 —— 手指按下去时整行后退，手感像按了个实体按键。 */
+.menu a:active{
+  color:var(--neon);
+  transform:translateX(.35rem) scale(.975);
+  transition-duration:.3s,.12s;
+  transition-timing-function:var(--ease),var(--sp-tap);
+}
 .menu a:active > i{color:var(--neon);transform:translate(4px,-4px)}
 .menu a:active::after{width:100%}
 /* 键盘用户也要看得见焦点，否则只有鼠标的人知道自己在哪 */
-.menu a:focus-visible{color:var(--neon);outline:none;padding-left:.6rem}
-.menu a:focus-visible::after{width:100%}
+.menu a:focus-visible{outline:none}
 .menu b{font-family:var(--f-display);font-size:.85rem;color:var(--neon);font-weight:400}
 
 /* ---------- 自定义光标 ---------- */
@@ -421,9 +517,22 @@ body.is-ready .welcome__foot{opacity:1}
 .welcome__scroll{
   display:inline-flex;align-items:center;gap:.6rem;
   font-size:var(--meta);letter-spacing:.18em;text-transform:uppercase;font-weight:700;
-  transition:opacity .3s;
+  transition-property:opacity,transform;
+  transition-duration:.3s,.3s;
+  transition-timing-function:var(--ease),cubic-bezier(.34,1.3,.64,1);
 }
-.welcome__scroll:hover{opacity:.6}
+/* 悬停时整体往下探一点：它就是"往下"的提示，动一下方向要跟它说的事一致 */
+.welcome__scroll:hover{
+  opacity:.6;
+  transform:translateY(5px);
+  transition-duration:.3s,.54s;
+  transition-timing-function:var(--ease),var(--sp-pop);
+}
+.welcome__scroll:active{
+  transform:translateY(1px) scale(.96);
+  transition-duration:.3s,.12s;
+  transition-timing-function:var(--ease),var(--sp-tap);
+}
 .welcome__scroll svg{width:13px;height:28px;animation:sway 2s infinite}
 
 /* 欢迎页期间先把导航和进度条收起来，保持开场干净 */
@@ -605,9 +714,33 @@ main{position:relative;z-index:2;background:var(--ink)}
 .hero__scroll{
   display:inline-flex;align-items:center;gap:.6rem;
   font-size:.7rem;letter-spacing:.2em;text-transform:uppercase;color:var(--mute);
-  transition:color .3s;
+  /* 这里【不能用 transform 做悬停位移】，必须用 translate：
+     它是 .hero__meta > :nth-child(2)，被
+       body.is-hero .hero__meta > *:nth-child(2){animation:fadeUp ... forwards}
+     挂着，而 fadeUp 的终态是 transform:none。
+     带 forwards 的动画在层叠里【压过普通声明】，所以
+     .hero__scroll:hover{transform:translateY(5px)} 会被永久无视 ——
+     不报错、不生效，看起来就像"忘了写"。
+     translate / scale 是独立属性，动画碰不到它们，两边互不干扰。
+
+     （这不是推理出来的：测试里这条一直是"位移 0.00px"，
+     加了命中测试确认鼠标没落错地方，才定位到是动画把声明吃掉了。） */
+  transition-property:color,translate,scale;
+  transition-duration:.3s,.3s,.3s;
+  transition-timing-function:var(--ease),cubic-bezier(.34,1.3,.64,1),cubic-bezier(.34,1.3,.64,1);
 }
-.hero__scroll:hover{color:var(--neon)}
+.hero__scroll:hover{
+  color:var(--neon);
+  translate:0 5px;
+  transition-duration:.3s,.54s,.54s;
+  transition-timing-function:var(--ease),var(--sp-pop),var(--sp-pop);
+}
+.hero__scroll:active{
+  translate:0 1px;
+  scale:.96;
+  transition-duration:.3s,.12s,.12s;
+  transition-timing-function:var(--ease),var(--sp-tap),var(--sp-tap);
+}
 .hero__scroll svg{width:11px;height:24px;animation:sway 2s infinite}
 @keyframes sway{0%,100%{transform:translateY(0);opacity:.5}50%{transform:translateY(5px);opacity:1}}
 
@@ -788,7 +921,13 @@ section{position:relative;scroll-margin-top:84px}
   aspect-ratio:1;
   width:100%;max-width:520px;
   margin:0;background:var(--ink-2);
-  transition:transform .7s var(--ease);
+  /* 左右滑入的位移改挂 translate，悬停放大改挂 scale —— 两个独立属性各走各的。
+     以前是"悬停时把位移表达式整个重抄一遍、末尾再拼个 scale(1.02)"，
+     抄漏一个 var(--dir) 位置就会突跳；现在滚动动效和悬停物理上不可能打架。
+     照片最大 520px 见方，用 --sp-soft：过冲只有 8.4%，弹一下就收住。 */
+  transition-property:translate,scale;
+  transition-duration:.7s,.3s;
+  transition-timing-function:var(--ease),cubic-bezier(.34,1.3,.64,1);
 }
 .passion:nth-child(odd) .passion__figure{justify-self:end}
 .passion:nth-child(even) .passion__figure{justify-self:start}
@@ -812,7 +951,7 @@ html.js .passion__body{
   transform:translate3d(calc((1 - var(--p,0)) * -28px * var(--dir)),0,0);
 }
 html.js .passion__figure{
-  transform:translate3d(calc((1 - var(--p,0)) * 28px * var(--dir)),0,0);
+  translate:calc((1 - var(--p,0)) * 28px * var(--dir)) 0;
 }
 /* 文字这一侧再拆成四层，各自用不同的位移量收敛：
    序号走得最远、正文最近，滚到位时四层同时归位 ——
@@ -823,9 +962,12 @@ html.js .passion__title{transform:translate3d(0,calc((1 - var(--p,0)) * 22px),0)
 html.js .passion__en{transform:translate3d(0,calc((1 - var(--p,0)) * 14px),0)}
 html.js .passion__text{transform:translate3d(0,calc((1 - var(--p,0)) * 8px),0)}
 @media (hover:hover){
-  /* 悬停放大必须把上面的位移一起写全，否则会覆盖掉、位置突跳 */
+  /* 位移和缩放分家之后，这里只需要给一个目标值，
+     不用再把滚动位移的表达式整个重抄一遍。 */
   .passion:hover .passion__figure{
-    transform:translate3d(calc((1 - var(--p,0)) * 28px * var(--dir)),0,0) scale(1.02);
+    scale:1.02;
+    transition-duration:.7s,.42s;
+    transition-timing-function:var(--ease),var(--sp-soft);
   }
 }
 
@@ -835,13 +977,32 @@ html.js .passion__text{transform:translate3d(0,calc((1 - var(--p,0)) * 8px),0)}
 .card{
   position:relative;background:var(--ink);padding:clamp(1.6rem,3.5vw,2.8rem);
   display:flex;flex-direction:column;min-height:clamp(230px,26vw,300px);
-  transition:background .45s var(--ease);overflow:hidden;
+  /* 卡片带 data-scrub="rise"，transform 归滚动动效所有（--p 驱动），
+     Q弹只能挂 scale：两个独立属性叠加，不会互相覆盖。
+
+     而且这里【刻意不做位移】：四张卡是 1px 细线拼出来的网格，
+     卡片一平移，它原来占的那条边就会露出网格底色，看着像布局坏了。
+     居中缩放只会把细线盖住，不会露底，所以位移一律不做。 */
+  transition-property:background,scale;
+  transition-duration:.45s,.3s;
+  transition-timing-function:var(--ease),cubic-bezier(.34,1.3,.64,1);
+  overflow:hidden;
 }
 .card::before{
   content:'';position:absolute;inset:auto 0 0 0;height:2px;background:var(--neon);
   transform:scaleX(0);transform-origin:left;transition:transform .55s var(--ease);
 }
-.card:hover{background:var(--ink-2)}
+.card:hover{
+  background:var(--ink-2);
+  scale:1.012;
+  transition-duration:.45s,.54s;
+  transition-timing-function:var(--ease),var(--sp-soft);
+}
+.card:active{
+  scale:.99;
+  transition-duration:.45s,.12s;
+  transition-timing-function:var(--ease),var(--sp-tap);
+}
 .card:hover::before{transform:scaleX(1)}
 .card__idx{font-family:var(--f-display);font-size:.8rem;color:var(--mute-2);letter-spacing:.1em}
 .card__title{
@@ -863,9 +1024,20 @@ html.js .passion__text{transform:translate3d(0,calc((1 - var(--p,0)) * 8px),0)}
 .card__arrow{
   position:absolute;top:clamp(1.6rem,3.5vw,2.8rem);right:clamp(1.6rem,3.5vw,2.8rem);
   font-size:1.3rem;color:var(--mute-2);
-  transition:transform .45s var(--ease),color .35s;
+  transition-property:transform,color;
+  transition-duration:.3s,.35s;
+  transition-timing-function:cubic-bezier(.34,1.3,.64,1),var(--ease);
 }
-.card:hover .card__arrow{transform:translate(5px,-5px);color:var(--neon)}
+.card:hover .card__arrow{
+  transform:translate(5px,-5px);color:var(--neon);
+  transition-duration:.54s,.35s;
+  transition-timing-function:var(--sp-pop),var(--ease);
+}
+.card:active .card__arrow{
+  transform:translate(2px,-2px) scale(.9);color:var(--neon);
+  transition-duration:.12s,.35s;
+  transition-timing-function:var(--sp-tap),var(--ease);
+}
 
 /* ---------- 技能 ---------- */
 .skills{padding:clamp(5rem,13vw,10rem) 0;border-bottom:1px solid var(--ink-3)}
@@ -874,12 +1046,34 @@ html.js .passion__text{transform:translate3d(0,calc((1 - var(--p,0)) * 8px),0)}
   position:relative;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1.4fr);
   align-items:center;gap:1.5rem;
   padding:clamp(1rem,2.4vw,1.5rem) 0;border-bottom:1px solid var(--ink-3);
-  transition:padding-left .45s var(--ease);
 }
-.skills__list li:hover{padding-left:.8rem}
-.skills__list b{font-family:var(--f-cn);font-weight:700;font-size:clamp(1rem,2.1vw,1.35rem);transition:color .35s}
+/* 右移挂在两个格子的内容上，不挂 li 本身，也不再动 padding-left。两个原因：
+   1) li 里那根进度条是 position:absolute;left:0 的"水平尺"。
+      让 li 整体位移，尺子会跟着跑，读出来的百分比就不对了。
+   2) padding 是布局属性，每帧重排；transform 只走合成器。 */
+.skills__list b{
+  font-family:var(--f-cn);font-weight:700;font-size:clamp(1rem,2.1vw,1.35rem);
+  transition-property:color,transform;
+  transition-duration:.35s,.3s;
+  transition-timing-function:var(--ease),cubic-bezier(.34,1.3,.64,1);
+}
+.skills__list span{
+  font-size:.84rem;color:var(--mute);
+  transition-property:transform;
+  transition-duration:.3s;
+  transition-timing-function:cubic-bezier(.34,1.3,.64,1);
+}
+.skills__list li:hover b,
+.skills__list li:hover span{
+  transform:translateX(.8rem);
+  transition-duration:.35s,.54s;
+  transition-timing-function:var(--ease),var(--sp-pop);
+}
+.skills__list li:hover span{
+  transition-duration:.54s;
+  transition-timing-function:var(--sp-pop);
+}
 .skills__list li:hover b{color:var(--neon)}
-.skills__list span{font-size:.84rem;color:var(--mute)}
 .skills__list i{
   position:absolute;left:0;bottom:-1px;height:1px;width:var(--lv);
   background:var(--neon);transform-origin:left;
@@ -922,8 +1116,23 @@ html.js .skills__list li.is-in i{transform:scaleX(1)}
 /* 也必须抬到欢迎页之上（z-index:1），否则滚到底部时会被它盖住 */
 .foot{position:relative;z-index:2;background:var(--ink);border-top:1px solid var(--ink-3);padding:1.6rem 0}
 .foot__wrap{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;font-size:.78rem;color:var(--mute)}
-.foot__wrap a{transition:color .3s}
-.foot__wrap a:hover{color:var(--neon)}
+/* 页脚是 flex，子项本身就会被块化，transform 直接可用 */
+.foot__wrap a{
+  transition-property:color,transform;
+  transition-duration:.3s,.3s;
+  transition-timing-function:var(--ease),cubic-bezier(.34,1.3,.64,1);
+}
+.foot__wrap a:hover{
+  color:var(--neon);
+  transform:translateY(-3px);
+  transition-duration:.3s,.54s;
+  transition-timing-function:var(--ease),var(--sp-pop);
+}
+.foot__wrap a:active{
+  transform:translateY(0) scale(.94);
+  transition-duration:.3s,.12s;
+  transition-timing-function:var(--ease),var(--sp-tap);
+}
 .foot__mid{color:var(--mute-2)}
 
 /* ============================================================
@@ -1082,8 +1291,11 @@ html.js .contact__glow{
   .passion{grid-template-columns:1fr;gap:1.6rem}
   .passion .passion__figure,
   .passion:nth-child(even) .passion__figure{order:0;justify-self:stretch;max-width:none}
-  html.js .passion__body,
-  html.js .passion__figure{transform:none}
+  /* 注意：.passion__figure 的横向位移现在挂在 translate 上（不是 transform），
+     所以这里必须写 translate:none。写成 transform:none 会静默失效，
+     手机上照片会永远偏 28px，而且不像"坏了"，像"排版本来就歪"。 */
+  html.js .passion__body{transform:none}
+  html.js .passion__figure{translate:none}
   /* 竖排不需要横向分层收敛，文字那四层的位移也一并去掉 */
   html.js .passion__idx,
   html.js .passion__title,
@@ -1203,6 +1415,7 @@ html.js .contact__glow{
   html.js .skills__list i{transform:scaleX(1)!important}
   /* 热爱区的照片：直接显示在终态（原大小、细线铺满） */
   html.js .passion__figure img{transform:none!important}
+  html.js .passion__figure{translate:none!important}
   .passion__figure::after{transform:scaleX(1)!important}
 }
 
@@ -1223,4 +1436,5 @@ html.scrub-off .contact__glow{
 }
 html.scrub-off .skills__list i{transform:scaleX(1)!important}
 html.scrub-off .passion__figure img{transform:none!important}
+html.scrub-off .passion__figure{translate:none!important}
 html.scrub-off .passion__figure::after{transform:scaleX(1)!important}
