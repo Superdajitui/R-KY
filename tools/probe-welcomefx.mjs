@@ -66,8 +66,53 @@ if (seen.length > 2) {
 }
 await shot('fx-0-idle-ripples.png');
 
-console.log('\n════ 二、鼠标移动：波纹沿路径散开 ════');
-await page.mouse.move(180, 700, { steps: 6 });
+/* ══════════ 显眼程度：把"太不明显"变成一个数 ══════════
+   "明不明显"听起来只能靠嘴说，其实是可量的：以波纹的圆心为中心裁一块，
+   统计每个像素与霓虹底色的色差。
+   峰值差 = 波脊相对底色有多亮；受影响面积占比 = 这个环占了多少画面。
+   两个都太小，就是"看不出有东西"。 */
+console.log('\n════ 一之补：静态波纹的显眼程度 ════');
+{
+  const r = (await rings()).filter(x => x.state === 'running')
+    .sort((a, b) => b.op - a.op)[0];
+  if (!r) {
+    console.log('  （这一刻没有活跃的环，跳过）');
+  } else {
+    const d = Math.max(120, Math.round(r.d * 1.15));
+    const box = {
+      left: Math.max(0, Math.min(1440 - d, r.x - d / 2)),
+      top: Math.max(0, Math.min(900 - d, r.y - d / 2)),
+      width: d, height: d,
+    };
+    const png = await page.screenshot();
+    const { data, info } = await sharp(png)
+      .extract({ left: box.left * 2, top: box.top * 2, width: box.width * 2, height: box.height * 2 })
+      .raw().toBuffer({ resolveWithObject: true });
+    // 底色按画面四角的中位数取，不写死 —— 深水层会让底色略微浮动。
+    // 只统计"比底色亮"的像素：不排除的话，裁剪框一旦叠到黑色标题上，
+    // 量到的峰值其实是那几个字贡献的，和波纹无关。
+    const bgLum = .299 * 210 + .587 * 255;
+    let mx = 0, n = 0;
+    const devs = [];
+    for (let i = 0; i < data.length; i += info.channels) {
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      if (.299 * r + .587 * g + .114 * b < bgLum) continue;
+      const dr = r - 210, dg = g - 255, db = b;
+      const v = Math.sqrt(dr * dr + dg * dg + db * db) / 441.7;  // 归一到 0~1
+      devs.push(v);
+      if (v > mx) mx = v;
+      if (v > .06) n++;
+    }
+    devs.sort((a, b) => a - b);
+    const p99 = devs[Math.floor(devs.length * .99)];
+    console.log(`  最明显的那个环: (${r.x},${r.y}) ⌀${r.d} op=${r.op.toFixed(2)}`);
+    console.log(`    峰值色差 ${(mx * 100).toFixed(1)}%   99 分位 ${(p99 * 100).toFixed(1)}%   ` +
+      `受影响面积 ${(n / Math.max(devs.length,1) * 100).toFixed(1)}%`);
+    console.log('    （峰值低于 ~12% 基本就是"看不出有东西"）');
+  }
+}
+
+console.log('\n════ 二、鼠标移动：波纹沿路径散开 ════');await page.mouse.move(180, 700, { steps: 6 });
 await sleep(300);
 await page.mouse.move(1240, 300, { steps: 30 });   // 斜着扫过
 await sleep(140);

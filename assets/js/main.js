@@ -814,22 +814,23 @@
         // 视口里随机一点，四边留余量，免得波纹还没铺开就被裁掉
         const x = innerWidth * (.06 + Math.random() * .88);
         const y = innerHeight * (.08 + Math.random() * .84);
-        /* 大小和浓淡的跨度都刻意拉开（铺到 ⌀210~560，浓淡 .28~.62）。
-           全都差不多重的话，画面是一层平均的噪，没有主次；
-           有强有弱、有大有小，眼睛才有地方落 —— 层次感是"高级"最省力的来源。 */
-        ring(x, y, 2200 + Math.random() * 1200, .38 + Math.random() * .62,
-          .28 + Math.random() * .34);
+        /* 大小和浓淡的跨度都刻意拉开（铺到 ⌀250~590，浓淡 .42~.88）。
+           全都差不多重的话，画面是一层平均的噪，没有主次。
+           下限量抬过一次：原来 .28 起步，再乘渐变的 .90 之后仍然很淡，
+           用户反馈"鼠标静止时的随机波纹太不明显"。 */
+        ring(x, y, 2200 + Math.random() * 1200, .45 + Math.random() * .6,
+          .42 + Math.random() * .46);
         // 偶尔再来一滴挨着的，像先后落下的两个雨点
         if (Math.random() < .34) {
           setTimeout(() => {
             if (!live()) return;
             ring(x + (Math.random() - .5) * 190, y + (Math.random() - .5) * 150,
-              2000 + Math.random() * 1100, .34 + Math.random() * .5,
-              .24 + Math.random() * .28);
+              2000 + Math.random() * 1100, .40 + Math.random() * .5,
+              .36 + Math.random() * .4);
           }, 160 + Math.random() * 280);
         }
         scheduleIdle();
-      }, delay || (650 + Math.random() * 780));
+      }, delay || (480 + Math.random() * 620));
     }
 
     /* ── 鼠标移动：沿着路径留下波纹往外晕开 ──
@@ -849,7 +850,8 @@
         const px = last.x + (x - last.x) * k;
         const py = last.y + (y - last.y) * k;
         ring(px, py, 1500 + Math.random() * 700, .62 + Math.random() * .4,
-          .44 + Math.random() * .18,
+          // 尾迹比自动冒的淡一档：它是一串叠在一起的，同样的浓度会糊成一片
+          .30 + Math.random() * .2,
           // 尾迹用一条更"冲"的缓动：它是被手指划出来的，前段该更急
           'cubic-bezier(.12,.55,.25,1)');
         last = { x: px, y: py };

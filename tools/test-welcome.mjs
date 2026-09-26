@@ -336,6 +336,59 @@ if (fxReady) {
   check(distinct >= 3, '波纹的位置是随机的（不是总在同一个点）',
     `${distinct} 个不同位置`);
 
+  /* 显眼程度 —— "太不明显了"这个反馈必须变成一个能守住的数。
+     做法：挑一个正在跑的环，以它为中心裁一块，统计每个像素与霓虹底色的色差。
+     峰值色差就是波脊相对底色有多亮。低于 15% 基本就是"看不出有东西"。
+     （曾经掉到过这里：主峰 .58 再乘动画的 0.28~0.62，有效透明度只剩 0.16~0.36。） */
+  {
+    const top = (await rings()).filter(r => r.state === 'running')
+      .sort((a, b) => b.op - a.op)[0];
+    if (!top) {
+      check(false, '静态波纹足够明显', '这一刻没有活跃的环，没法量');
+    } else {
+      const d = Math.max(140, Math.round(top.d * 1.15));
+      const box = {
+        left: Math.max(0, Math.min(1440 - d, top.x - d / 2)),
+        top: Math.max(0, Math.min(900 - d, top.y - d / 2)),
+        width: d, height: d,
+      };
+      const png = await page.screenshot();
+      // 缩放系数从截图本身推，不写死 —— 探针是 2 倍图、这里是 1 倍，
+      // 写死 2 就会裁出界（sharp 报 bad extract area）
+      const meta = await sharp(png).metadata();
+      const sx = meta.width / 1440;
+      const cut = {
+        left: Math.round(box.left * sx), top: Math.round(box.top * sx),
+        width: Math.round(box.width * sx), height: Math.round(box.height * sx),
+      };
+      cut.width = Math.min(cut.width, meta.width - cut.left);
+      cut.height = Math.min(cut.height, meta.height - cut.top);
+      const { data, info } = await sharp(png).extract(cut)
+        .raw().toBuffer({ resolveWithObject: true });
+      /* 只统计"比底色亮"的像素，并把近黑的排除掉。
+         不排除的话，裁剪框一旦叠到大标题的黑色笔画上，
+         量到的"峰值色差"其实是那几个字贡献的（黑 vs 霓虹，偏差接近 100%），
+         和波纹一点关系都没有 —— 第一次就量出个 69.5% 的假数。
+         霓虹底色本身不亮于自己，所以偏差为 0；波脊提亮，偏差为正。 */
+      const bgLum = .299 * 210 + .587 * 255;
+      let peak = 0, over = 0, total = 0;
+      for (let i = 0; i < data.length; i += info.channels) {
+        const r = data[i], g = data[i + 1], b = data[i + 2];
+        if (.299 * r + .587 * g + .114 * b < bgLum) { total++; continue; }  // 底色或更暗 → 不看
+        const dr = r - 210, dg = g - 255, db = b;
+        const v = Math.sqrt(dr * dr + dg * dg + db * db) / 441.7;
+        if (v > peak) peak = v;
+        if (v > .06) over++;
+        total++;
+      }
+      console.log(`  最明显的环: ⌀${top.d} 当前不透明度 ${top.op.toFixed(2)}  ` +
+        `峰值色差 ${(peak * 100).toFixed(1)}%  受影响面积 ${(over / total * 100).toFixed(1)}%`);
+      check(peak > .15, '静态波纹足够明显（峰值色差 > 15%）',
+        `${(peak * 100).toFixed(1)}%`);
+      check(over / total > .01, '波纹覆盖了可感知的一小块面积', `${(over / total * 100).toFixed(1)}%`);
+    }
+  }
+
   // ② 同一圈：必须一边扩大一边变淡 —— 这就是"晕开"
   {
     let grown = null;
