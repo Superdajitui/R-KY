@@ -652,10 +652,11 @@
      全程只有 transform + opacity，合成器就能完成。
      --------------------------------------------------------- */
   const wave    = $('#wave');
+  const waveDeep = $('#waveDeep');
   const titleEl = $('.welcome__title');
   const bodyEl  = $('.welcome__body');
 
-  if (welcome && wave && titleEl && bodyEl && !isTouch && !reduce) {
+  if (welcome && wave && waveDeep && titleEl && bodyEl && !isTouch && !reduce) {
     /* ── 拆字 ──
        行内元素不吃 transform，不拆成 inline-block 就谈不上"逐字"。
        只在真能跑动效的时候拆：拆了却没脚本接着驱动，等于白改一遍 DOM。 */
@@ -711,14 +712,15 @@
       if (chars[0]) radius = Math.max(120, chars[0].el.offsetHeight * 2.1);
     }
 
-    /* ══════════ 水波纹 ══════════
+    /* ══════════ 水面：深水层 + 表面涟漪 ══════════
        由 Web Animations 驱动：JS 只在"该冒一个波纹"的时候跑一次，
        扩散和淡出全交给合成器。这里【没有】常驻的 rAF 循环 ——
-       水波纹是一圈圈各自独立的短动画，不是每帧重算的状态。
+       波纹是一圈圈各自独立的短动画，不是每帧重算的状态。
 
        池子复用而不是每次新建元素：新建会带来 GC 抖动，
        而且元素数量没有上限的话，鼠标甩一下就能刷出上百个图层。 */
     const pool = $$('i', wave);
+    const deepPool = $$('i', waveDeep);
     const isRunning = el => el.__a && el.__a.playState === 'running';
     const aliveCount = () => pool.reduce((n, el) => n + (isRunning(el) ? 1 : 0), 0);
 
@@ -727,9 +729,9 @@
        鼠标快速扫过时，正在跑的恰好是自动冒出来的那几圈，
        被丢掉的却正是尾迹，扫完一看路径上只有稀稀拉拉三圈。
        改成复用"最接近散尽"的那一圈（它的透明度已经很低，掐掉看不出来）。 */
-    function pick() {
+    function pick(from) {
       let best = null, bestP = -1;
-      for (const el of pool) {
+      for (const el of from) {
         if (!isRunning(el)) return el;                     // 有空位就直接用
         const p = el.__a.effect.getComputedTiming().progress ?? 1;
         if (p > bestP) { bestP = p; best = el; }
@@ -737,26 +739,63 @@
       return best;
     }
 
-    function ring(x, y, dur, grow, peak) {
-      const el = pick();
+    /* 起一圈波纹。
+       rot / squash 是给"高级感"加的：完美正圆一眼就是程序画的。
+       真实水面上的涟漪永远是略扁的、朝向随机的，
+       所以每个环都带一个随机旋转 + 一点椭圆度 —— 叠在一起就没有"同心圆阵列"的机械感。 */
+    function ring(x, y, dur, grow, peak, ease) {
+      const el = pick(pool);
       if (!el) return;
       if (el.__a) { el.__a.cancel(); el.__a = null; }
+      const rot = (Math.random() * 360).toFixed(1);
+      const squash = (.9 + Math.random() * .17).toFixed(3);   // 0.90~1.07
       const at = s => ({ transform: 'translate3d(' + x.toFixed(1) + 'px,' +
-        y.toFixed(1) + 'px,0) scale(' + s.toFixed(3) + ')' });
+        y.toFixed(1) + 'px,0) rotate(' + rot + 'deg)' +
+        ' scale(' + s.toFixed(3) + ',' + (s * squash).toFixed(3) + ')' });
       /* 三个关键帧：几乎从零开始 → 快速铺开一点并达到最亮 → 铺到最大、淡尽。
-         中段放在 18%：真实的水波是"先猛地弹开、之后慢慢失去能量"，
+         中段放在 16%：真实的水波是"先猛地弹开、之后慢慢失去能量"，
          峰值放太靠后会显得迟钝。 */
       const a = el.animate([
         Object.assign(at(grow * .07), { opacity: 0 }),
-        Object.assign(at(grow * .40), { opacity: peak, offset: .18 }),
+        Object.assign(at(grow * .38), { opacity: peak, offset: .16 }),
         Object.assign(at(grow), { opacity: 0 }),
-      ], { duration: dur, easing: 'cubic-bezier(.16,.62,.3,1)', fill: 'forwards' });
+      ], { duration: dur, easing: ease || 'cubic-bezier(.16,.6,.28,1)', fill: 'forwards' });
       el.__a = a;
       /* 跑完立刻 cancel：效果撤掉后元素回到 CSS 的 opacity:0，
          终点本来就是 0，所以看不出任何跳变 ——
          但这样就【不会留着一条 fill:forwards 的动画】继续参与合成。
          不 cancel 的话，一次浏览下来会攒下几百条已完成动画。 */
       a.onfinish = () => { a.cancel(); if (el.__a === a) el.__a = null; };
+    }
+
+    /* ── 深水层：极慢、极大、极淡的暗涌 ──
+       它自己成一个节奏，跟鼠标没有任何关系。
+       它存在的唯一意义是让表面涟漪"有底" ——
+       少了它，那些圈就是浮在纯色上的贴纸。 */
+    let deepT = 0;
+    function scheduleDeep(delay) {
+      clearTimeout(deepT);
+      deepT = setTimeout(() => {
+        if (!live()) { deepT = 0; return; }
+        const el = pick(deepPool);
+        if (el) {
+          if (el.__a) { el.__a.cancel(); el.__a = null; }
+          const x = innerWidth * (.12 + Math.random() * .76);
+          const y = innerHeight * (.12 + Math.random() * .76);
+          const grow = 1.35 + Math.random() * .75;          // 铺到 1200~1900px
+          const at = s => ({ transform: 'translate3d(' + x.toFixed(0) + 'px,' +
+            y.toFixed(0) + 'px,0) scale(' + s.toFixed(3) + ')' });
+          const a = el.animate([
+            Object.assign(at(grow * .34), { opacity: 0 }),
+            Object.assign(at(grow * .62), { opacity: .5, offset: .42 }),
+            Object.assign(at(grow), { opacity: 0 }),
+          ], { duration: 6200 + Math.random() * 4800,
+            easing: 'cubic-bezier(.3,.5,.4,1)', fill: 'forwards' });
+          el.__a = a;
+          a.onfinish = () => { a.cancel(); if (el.__a === a) el.__a = null; };
+        }
+        scheduleDeep();
+      }, delay || (2600 + Math.random() * 3400));
     }
 
     /* ── 鼠标不动时自己冒：像雨点落在水面上 ──
@@ -773,19 +812,19 @@
         // 视口里随机一点，四边留余量，免得波纹还没铺开就被裁掉
         const x = innerWidth * (.06 + Math.random() * .88);
         const y = innerHeight * (.08 + Math.random() * .84);
-        ring(x, y, 1500 + Math.random() * 900, .5 + Math.random() * .45,
-          .42 + Math.random() * .2);
+        ring(x, y, 2200 + Math.random() * 1200, .5 + Math.random() * .45,
+          .40 + Math.random() * .18);
         // 偶尔再来一滴挨着的，像先后落下的两个雨点
         if (Math.random() < .34) {
           setTimeout(() => {
             if (!live()) return;
             ring(x + (Math.random() - .5) * 190, y + (Math.random() - .5) * 150,
-              1400 + Math.random() * 800, .42 + Math.random() * .35,
-              .36 + Math.random() * .18);
+              2000 + Math.random() * 1100, .42 + Math.random() * .35,
+              .34 + Math.random() * .16);
           }, 160 + Math.random() * 280);
         }
         scheduleIdle();
-      }, delay || (500 + Math.random() * 720));
+      }, delay || (520 + Math.random() * 640));
     }
 
     /* ── 鼠标移动：沿着路径留下波纹往外晕开 ──
@@ -804,8 +843,10 @@
         const k = STEP / d;
         const px = last.x + (x - last.x) * k;
         const py = last.y + (y - last.y) * k;
-        ring(px, py, 1000 + Math.random() * 400, .62 + Math.random() * .4,
-          .46 + Math.random() * .2);
+        ring(px, py, 1500 + Math.random() * 700, .62 + Math.random() * .4,
+          .44 + Math.random() * .18,
+          // 尾迹用一条更"冲"的缓动：它是被手指划出来的，前段该更急
+          'cubic-bezier(.12,.55,.25,1)');
         last = { x: px, y: py };
         d = Math.hypot(x - last.x, y - last.y);
       }
@@ -828,6 +869,7 @@
         if (c.wrote !== 1) { c.el.style.transform = ''; c.wrote = 1; }
       }
       for (const el of pool) { if (el.__a) { el.__a.cancel(); el.__a = null; } }
+      for (const el of deepPool) { if (el.__a) { el.__a.cancel(); el.__a = null; } }
       mouse.has = false; inside = false;
     }
 
@@ -910,8 +952,10 @@
     addEventListener('scroll', () => {
       if (live()) {
         if (!idleT) scheduleIdle();
+        if (!deepT) scheduleDeep();
       } else {
         clearTimeout(idleT); idleT = 0;
+        clearTimeout(deepT); deepT = 0;
         if (mouse.has || chars.some(c => c.sc !== 1) || aliveCount()) reset();
         running = false;
       }
@@ -925,8 +969,10 @@
     let rt = 0;
     addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(measure, 150); });
 
-    // 开场先等预加载遮罩走完（1.25s 动画 + 淡出 + 0.42s），别在遮罩背后空放波纹
+    // 开场先等预加载遮罩走完（1.25s 动画 + 淡出 + 0.42s），别在遮罩背后空放波纹。
+    // 深水层更晚一点 —— 水面应该先静一下，再慢慢"活"过来。
     scheduleIdle(2600);
+    scheduleDeep(3800);
 
     /* 调试钩子，和 __scrub() 一套思路：
        让测试能直接问"循环还跑着吗、还有几圈波纹在跑"，
@@ -937,6 +983,7 @@
       radius: Math.round(radius),
       chars: chars.map(c => +c.sc.toFixed(4)),
       rings: aliveCount(),
+      deep: deepPool.reduce((n, el) => n + (isRunning(el) ? 1 : 0), 0),
       ringPos: pool.filter(el => el.__a && el.__a.playState === 'running')
         .map(el => {
           const m = el.style.transform.match(/translate3d\(([-\d.]+)px,\s*([-\d.]+)px/);

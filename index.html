@@ -60,14 +60,19 @@
      因为 position:fixed，滚回顶部还能再看到它。
      无脚本时由上面的 <noscript> 直接隐藏。 -->
 <div class="welcome" id="welcome">
-  <!-- 水波纹层：一圈圈向外扩散的环。
-       鼠标不动时在随机位置自己冒（像雨点落在水面上），
-       鼠标移动时沿着路径留下波纹、往外晕开。
-       放在网格线【下面】—— 网格只有 8% 不透明度，压在上面才不会被糊掉。
-       十六个 <i> 是复用池：波纹由 Web Animations 驱动，
-       JS 只在"该冒一个"的时候跑一次，没有常驻的 rAF 循环。
-       纯装饰，aria-hidden；手机和"减少动效"下不启用。 -->
-  <div class="welcome__wave" id="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <!-- 水波纹层：两层叠出来的"水面"。
+       · 深水层（#waveDeep）—— 极慢、极大、极淡的暗涌。
+         它不抢戏，作用是让人感到"水面下面还有水"。
+         少了这一层，表面涟漪就是浮在纯色上的圈，像贴纸。
+       · 表面涟漪（#wave）—— 一圈圈向外扩散的环。鼠标不动时随机位置自己冒，
+         移动时沿路径留下波纹往外晕开。
+       两层都放在网格线【下面】，压在上面才不会把网格糊掉。
+       波纹由 Web Animations 驱动，JS 只在"该冒一个"的时候跑一次，
+       没有常驻的 rAF 循环。纯装饰，aria-hidden；手机和"减少动效"下不启用。 -->
+  <div class="welcome__wave" aria-hidden="true">
+    <div class="welcome__deep" id="waveDeep"><i></i><i></i><i></i></div>
+    <div class="welcome__rip" id="wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  </div>
 
   <div class="welcome__grid" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 

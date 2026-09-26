@@ -140,6 +140,58 @@ await sharp({ create: { width: m.width, height: m.height * 2 + 20, channels: 4, 
 
 console.log(`\n截图: ${SHOTS}/fx-0-idle-ripples.png  fx-1-trail.png  fx-2-char-peak.png  fx-compare.png`);
 
+/* ══════════ 胶片条：环境动画只能连起来看 ══════════
+   单个静止帧判不出"高级不高级"——环境动画的全部意义都在【变化】上。
+   这里连拍 6 帧并排：能同时看到涟漪的疏密、扩散的层次、深水层的缓慢起伏。
+   再把两层各自遮掉拍一组，用像素差值确认它们【真的在起作用】——
+   "少一层有没有区别"不能靠"我觉得有"。 */
+console.log('\n════ 五、胶片条 ════');
+await page.mouse.move(20, 860);
+await page.evaluate(() => window.scrollTo(0, 0));
+await sleep(1400);
+
+async function strip(file, n = 6, gap = 950) {
+  const tiles = [];
+  for (let i = 0; i < n; i++) {
+    const buf = await page.screenshot();
+    tiles.push(await sharp(buf).resize({ width: 420 }).toBuffer());
+    if (i < n - 1) await sleep(gap);
+  }
+  const m = await sharp(tiles[0]).metadata();
+  await sharp({ create: { width: m.width * n, height: m.height, channels: 4, background: '#111112' } })
+    .composite(tiles.map((t, i) => ({ input: t, left: i * m.width, top: 0 })))
+    .toFile(`${SHOTS}/${file}`);
+  return tiles;
+}
+
+const diff = async tiles => {
+  const raw = await Promise.all(tiles.map(t => sharp(t).greyscale().raw().toBuffer()));
+  let sum = 0;
+  for (let i = 1; i < raw.length; i++) {
+    for (let k = 0; k < raw[i].length; k++) sum += Math.abs(raw[i][k] - raw[i - 1][k]);
+  }
+  return sum / ((raw.length - 1) * raw[0].length);
+};
+
+const both = await strip('fx-3-strip-both.png');
+console.log('  fx-3-strip-both.png    （两层都在）');
+
+await page.addStyleTag({ content: '#wave{display:none!important}' });
+await sleep(500);
+const deepOnly = await strip('fx-4-strip-deep.png');
+console.log('  fx-4-strip-deep.png    （只留深水层）');
+
+await page.addStyleTag({ content: '#wave{display:block!important}#waveDeep{display:none!important}' });
+await sleep(500);
+const ripOnly = await strip('fx-5-strip-rip.png', 6, 950);
+console.log('  fx-5-strip-rip.png     （只留表面涟漪）');
+
+console.log('\n  逐帧平均像素变化（灰阶 0~255）:');
+console.log(`    两层都在   : ${(await diff(both)).toFixed(3)}`);
+console.log(`    只留深水层 : ${(await diff(deepOnly)).toFixed(3)}`);
+console.log(`    只留表面层 : ${(await diff(ripOnly)).toFixed(3)}`);
+console.log('    深水层本来就该远小于表面层；只要不是 0，它就在做"底"');
+
 /* 滚过一屏之后必须彻底安静下来 */
 await page.evaluate(() => window.scrollTo(0, innerHeight * 2));
 await sleep(1500);

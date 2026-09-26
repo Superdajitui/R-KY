@@ -31,7 +31,7 @@
 <!-- 开场页第一眼就是中文大字，中文字体必须一起预加载，
      否则会先闪一下系统字体再换过来 -->
 <link rel="preload" href="assets/fonts/noto-sans-sc-subset.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="assets/css/style.css?v=5ce64f71">
+<link rel="stylesheet" href="assets/css/style.css?v=3564694c">
 <noscript><style>
   /* 无脚本兜底：不让预加载遮罩和欢迎页挡住内容，一切静态可见。
      底部三件套和 KERRY 的每个字母都是各自入场的，漏一个就会缺一块。 */
@@ -62,14 +62,19 @@
      因为 position:fixed，滚回顶部还能再看到它。
      无脚本时由上面的 <noscript> 直接隐藏。 -->
 <div class="welcome" id="welcome">
-  <!-- 水波纹层：一圈圈向外扩散的环。
-       鼠标不动时在随机位置自己冒（像雨点落在水面上），
-       鼠标移动时沿着路径留下波纹、往外晕开。
-       放在网格线【下面】—— 网格只有 8% 不透明度，压在上面才不会被糊掉。
-       十六个 <i> 是复用池：波纹由 Web Animations 驱动，
-       JS 只在"该冒一个"的时候跑一次，没有常驻的 rAF 循环。
-       纯装饰，aria-hidden；手机和"减少动效"下不启用。 -->
-  <div class="welcome__wave" id="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <!-- 水波纹层：两层叠出来的"水面"。
+       · 深水层（#waveDeep）—— 极慢、极大、极淡的暗涌。
+         它不抢戏，作用是让人感到"水面下面还有水"。
+         少了这一层，表面涟漪就是浮在纯色上的圈，像贴纸。
+       · 表面涟漪（#wave）—— 一圈圈向外扩散的环。鼠标不动时随机位置自己冒，
+         移动时沿路径留下波纹往外晕开。
+       两层都放在网格线【下面】，压在上面才不会把网格糊掉。
+       波纹由 Web Animations 驱动，JS 只在"该冒一个"的时候跑一次，
+       没有常驻的 rAF 循环。纯装饰，aria-hidden；手机和"减少动效"下不启用。 -->
+  <div class="welcome__wave" aria-hidden="true">
+    <div class="welcome__deep" id="waveDeep"><i></i><i></i><i></i></div>
+    <div class="welcome__rip" id="wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  </div>
 
   <div class="welcome__grid" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 
@@ -477,6 +482,6 @@
   </div>
 </footer>
 
-<script src="assets/js/main.js?v=7ee7e8fd"></script>
+<script src="assets/js/main.js?v=47a2849e"></script>
 </body>
 </html>

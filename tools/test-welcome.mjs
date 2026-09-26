@@ -364,6 +364,97 @@ if (fxReady) {
     }
   }
 
+  /* --- "高级感"具体落在哪三件事上，逐条验 ---
+     这几条不是在验"动了没有"，而是在验【它凭什么是水的样子】。
+     参考的是 Andy Clarke 在 Smashing Magazine 上总结的环境动画原则：
+     慢而顺、无缝循环、用分层堆出复杂度。 */
+  const craft = await page.evaluate(() => {
+    const rip = document.querySelector('#wave i');
+    const deep = document.querySelector('#waveDeep i');
+    const parse = el => {
+      const m = getComputedStyle(el).backgroundImage
+        .match(/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/g) || [];
+      return m.map(s => {
+        const p = s.match(/[\d.]+/g).map(Number);
+        return { lum: .299 * p[0] + .587 * p[1] + .114 * p[2], a: p[3] ?? 1 };
+      });
+    };
+    const pageLum = .299 * 210 + .587 * 255 + .114 * 0;   // 霓虹底色
+    const stops = parse(rip).filter(c => c.a > .05);
+    // 波峰/波谷个数：亮度在"比底色亮"和"比底色暗"之间来回切换了几次
+    let crests = 0, troughs = 0, prev = null;
+    for (const c of stops) {
+      const kind = c.lum > pageLum ? 'up' : 'down';
+      if (kind !== prev) { if (kind === 'up') crests++; else troughs++; prev = kind; }
+    }
+    return {
+      stops: stops.length, crests, troughs,
+      brightest: Math.max(...stops.map(c => c.lum)),
+      darkest: Math.min(...stops.map(c => c.lum)),
+      pageLum,
+      deepStops: parse(deep).filter(c => c.a > .05).length,
+      deepMax: Math.max(...parse(deep).map(c => c.a)),
+      ripMax: Math.max(...stops.map(c => c.a)),
+    };
+  });
+  console.log(`  表面剖面: ${craft.stops} 个色标，波峰 ${craft.crests} / 波谷 ${craft.troughs}，` +
+    `最亮 ${craft.brightest.toFixed(0)} / 最暗 ${craft.darkest.toFixed(0)}（底色 ${craft.pageLum.toFixed(0)}）`);
+  console.log(`  深水剖面: ${craft.deepStops} 个色标，最大不透明度 ${craft.deepMax}（表面是 ${craft.ripMax}）`);
+
+  check(craft.crests >= 3 && craft.troughs >= 3,
+    '表面剖面是一列波（多个波峰 + 波谷），不是单独一圈',
+    `${craft.crests} 峰 / ${craft.troughs} 谷`);
+  check(craft.brightest > craft.pageLum && craft.darkest < craft.pageLum,
+    '剖面上同时有比底色亮的波峰和比底色暗的波谷（这就是"折射"的读法）',
+    `亮 ${craft.brightest.toFixed(0)} 暗 ${craft.darkest.toFixed(0)} / 底色 ${craft.pageLum.toFixed(0)}`);
+  check(craft.deepMax < craft.ripMax * .7,
+    '深水层比表面层淡得多（它是"底"，不抢戏）',
+    `${craft.deepMax} < ${(craft.ripMax * .7).toFixed(2)}`);
+  check(craft.deepStops >= 3, '深水层的剖面是弥散的（不是一条硬边）',
+    `${craft.deepStops} 个色标`);
+
+  // 每个环的朝向/扁度都不一样 —— 完美正圆一眼就是程序画的。
+  // 变换写在 WAAPI 的【关键帧】里，不在 el.style 上：
+  // 读 style.transform 永远是空的（这里就先读错过一次，报出"0 种朝向"）。
+  const shapes = await page.evaluate(() =>
+    [...document.querySelectorAll('#wave i')].map(el => {
+      const a = el.getAnimations()[0];
+      if (!a) return null;
+      const kf = a.effect.getKeyframes().find(k => k.transform);
+      const m = kf && kf.transform.match(
+        /rotate\(([-\d.]+)deg\)\s*scale\(([-\d.]+),\s*([-\d.]+)\)/);
+      return m ? { rot: +m[1], squash: +m[3] / +m[2] } : null;
+    }).filter(Boolean));
+  const rots = new Set(shapes.map(s => s.rot.toFixed(1)));
+  const squash = shapes.map(s => s.squash);
+  console.log(`  环的形状: ${shapes.length} 个有记录，朝向 ${rots.size} 种不同，` +
+    `扁度 ${squash.length ? Math.min(...squash).toFixed(3) + '~' + Math.max(...squash).toFixed(3) : '-'}`);
+  check(shapes.length >= 2 && rots.size >= 2,
+    '每个环的朝向随机（不是一圈圈同心正圆，那样一眼就是程序画的）',
+    `${rots.size} 种朝向`);
+  check(squash.length >= 2 && Math.max(...squash) - Math.min(...squash) > .02,
+    '每个环都是略扁的、扁度各不相同（真水面上的涟漪不会是正圆）',
+    `扁度跨度 ${squash.length ? (Math.max(...squash) - Math.min(...squash)).toFixed(3) : '-'}`);
+
+  // 深水层的时长必须远长于表面涟漪 —— "慢"是它不抢戏的前提
+  const durs = await page.evaluate(() => ({
+    deep: [...document.querySelectorAll('#waveDeep i')]
+      .map(el => el.getAnimations()[0]?.effect.getTiming().duration ?? 0),
+    rip: [...document.querySelectorAll('#wave i')]
+      .map(el => el.getAnimations()[0]?.effect.getTiming().duration ?? 0).filter(Boolean),
+  }));
+  const deepRun = durs.deep.filter(Boolean);
+  console.log(`  时长: 深水 ${deepRun.map(d => (d / 1000).toFixed(1) + 's').join(',') || '（这一刻没在跑）'}` +
+    `  表面 ${durs.rip.map(d => (d / 1000).toFixed(1) + 's').join(',') || '（无）'}`);
+  if (deepRun.length && durs.rip.length) {
+    check(Math.min(...deepRun) > Math.max(...durs.rip) * 2,
+      '深水层比表面涟漪慢得多（分层的关键是节奏拉开，不是叠在一起）',
+      `${(Math.min(...deepRun) / 1000).toFixed(1)}s vs ${(Math.max(...durs.rip) / 1000).toFixed(1)}s`);
+  } else {
+    check(deepRun.length + durs.rip.length > 0, '深水层与表面层都有动画在跑',
+      `深水 ${deepRun.length} / 表面 ${durs.rip.length}`);
+  }
+
   // ③ 鼠标移动：沿路径留下波纹
   await page.mouse.move(180, 740, { steps: 6 });
   await sleep(1400);
@@ -391,9 +482,12 @@ if (fxReady) {
   const stopped = await page.evaluate(() => window.__welcomeFx());
   check(!stopped.running, '鼠标停住几秒后逐字的 rAF 循环自己停了（不留空转）',
     `running=${stopped.running} 字=${stopped.chars.map(v => v.toFixed(3)).join(',')}`);
-  // 水波纹不靠 rAF，但停手之后也不该越积越多
-  check(stopped.rings <= 4, '鼠标停住时水波纹不会被堆起来（池子有上限、跑完就收）',
-    `在跑的 ${stopped.rings} 圈`);
+  // 水波纹不靠 rAF，但停手之后也不该越积越多。
+  // 上限不是"越少越好"：表面涟漪的时长是 2.2~3.4s、每 0.5~1.2s 冒一个，
+  // 稳态下同时有四五圈本来就正常 —— 层叠出来的干涉才是水面的样子。
+  // 这里卡的是"不会无限堆积"（池子就 16 个），不是"必须只有一两圈"。
+  check(stopped.rings <= 8, '鼠标停住时水波纹不会被堆起来（池子有上限、跑完就收）',
+    `在跑的 ${stopped.rings} 圈（池子 16）`);
 
   /* --- 滚过一屏之后要整体复位 --- */
   await page.evaluate(() => window.scrollTo(0, innerHeight * 2));

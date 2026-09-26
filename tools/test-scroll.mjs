@@ -612,9 +612,9 @@ const rmFx = await rp.evaluate(() => ({
   hooked: typeof window.__welcomeFx === 'function',
   chars: document.querySelectorAll('.welcome__ch').length,
   split: document.querySelectorAll('.welcome__line > span.is-split').length,
-  rings: [...document.querySelectorAll('#wave i')]
+  rings: [...document.querySelectorAll('#wave i, #waveDeep i')]
     .filter(el => el.getAnimations().length).length,
-  waveInk: [...document.querySelectorAll('#wave i')]
+  waveInk: [...document.querySelectorAll('#wave i, #waveDeep i')]
     .filter(el => +getComputedStyle(el).opacity > .01).length,
   strokeOnLine: getComputedStyle(document.querySelector('.welcome__line--outline > span'))
     .webkitTextStrokeWidth,
@@ -709,7 +709,7 @@ const mobFx = await mp.evaluate(() => {
     stroke: cs.webkitTextStrokeWidth,
     strokeColor: cs.webkitTextStrokeColor,
     fill: after.content,
-    rings: [...document.querySelectorAll('#wave i')]
+    rings: [...document.querySelectorAll('#wave i, #waveDeep i')]
       .filter(el => el.getAnimations().length).length,
   };
 });
