@@ -107,16 +107,36 @@ const wel = await page.evaluate(() => {
   const el = document.querySelector('#welcome');
   const cs = el ? getComputedStyle(el) : null;
   const title = document.querySelector('.welcome__title');
+  const meta = document.querySelector('meta[name="theme-color"]');
+  const cv = document.getElementById('shards');
   return {
     exists: !!el,
     bg: cs?.backgroundColor || '',
+    theme: meta?.getAttribute('content') || '',
     text: title?.textContent.replace(/\s+/g, '') || '',
     atWelcome: document.body.classList.contains('at-welcome'),
+    shardOpacity: cv ? getComputedStyle(cv).opacity : null,
+    shardState: typeof window.__shards === 'function' ? window.__shards() : null,
   };
 });
+const hexToRgb = hex => {
+  const h = hex.replace('#', '');
+  const n = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16);
+  return `rgb(${n >> 16 & 255}, ${n >> 8 & 255}, ${n & 255})`;
+};
 console.log('\n开场页');
 check(wel.exists, '欢迎页存在');
-check(/210,\s*255,\s*0/.test(wel.bg), '背景是主题色', wel.bg);
+/* 底色跟 <meta name="theme-color"> 对着比，别在这儿硬编码色值 ——
+   上一版欢迎页改成墨黑之后，这条还写着旧的霓虹 210,255,0，线上就挂了一条。
+   写死色号的断言等于把"页面长什么样"抄了一份到测试里，迟早对不上。 */
+check(wel.bg === hexToRgb(wel.theme),
+  '欢迎页底色和 theme-color 声明一致（手机地址栏的颜色跟页面对得上）',
+  `页面 ${wel.bg} / 声明 ${wel.theme || '（没写）'}`);
+check(+wel.shardOpacity > .9, '箔片画布已经淡入（不是停在透明的第一帧）',
+  `opacity=${wel.shardOpacity}`);
+check(wel.shardState?.running && wel.shardState.count >= 200,
+  '线上背景箔片真的在跑（本地好看、线上不动这种最坑）',
+  wel.shardState ? `${wel.shardState.count} 片 running=${wel.shardState.running}` : '（没挂上）');
 check(wel.text.includes('欢迎来到我的个人网站'), '文案完整', wel.text);
 check(wel.atWelcome, '初始停在欢迎页');
 await page.screenshot({ path: 'tools/shots/live-welcome.png' });
