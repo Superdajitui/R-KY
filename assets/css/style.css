@@ -676,23 +676,7 @@ main{position:relative;z-index:2;background:var(--ink)}
 /* ============================================================
    首屏
    ============================================================ */
-/* 钉住跑道：比一屏高一段，走过这一段时首屏看起来没动。
-   用【变换】做假钉住而不是 position:sticky —— body 上有 overflow-x:hidden，
-   那会让 body 变成滚动容器，sticky 在它下面根本不生效（不报错，就是不粘）。
-   变换版还顺带满足了这个站一贯的约束：只有 transform，合成器就能完成。
-
-   --pin-len  这一段有多长（main.js 量成 px 写回来，CSS 和 JS 共用同一个值，
-              免得两边各写一份、改一处忘了另一处）
-   --pin-p    进度 0→1（main.js 按滚动位置写入） */
-:root{--pin-len:72svh}
-.heroPin{height:calc(100svh + var(--pin-len))}
-.hero{
-  position:relative;height:100vh;height:100svh;min-height:0;
-  overflow:hidden;isolation:isolate;
-}
-html.js .heroPin .hero{
-  transform:translate3d(0,calc(var(--pin-p,0) * var(--pin-len)),0);
-}
+.hero{position:relative;min-height:100vh;min-height:100svh;overflow:hidden;isolation:isolate}
 
 /* 背景竖向网格线 */
 .hero__grid{position:absolute;inset:0;display:grid;grid-template-columns:repeat(4,1fr);pointer-events:none;z-index:0}
@@ -1385,9 +1369,7 @@ html.js .contact__big .ln__in{
    这些元素的位置是用独立的 translate 属性做居中的（见 .hero__word 注释），
    transform 是空着的，所以这里放心用 transform，两者不打架。 */
 html.js .hero__stage{
-  /* 两个缩放相乘：--hero-p 是"滚过首屏"的退场，--pin-p 是钉住期间的收缩。
-     写成一次 scale() 而不是 scale() scale()，省一层变换。 */
-  transform:scale(calc((1 - .045 * var(--hero-p,0)) * (1 - .4 * var(--pin-p,0))));
+  transform:scale(calc(1 - .045 * var(--hero-p,0)));
   opacity:calc(1 - .9 * var(--hero-p,0));
 }
 html.js .hero__word--top{transform:translate3d(0,calc(var(--hero-p,0) * -54px),0)}
@@ -1397,18 +1379,6 @@ html.js .hero__portrait{
             scale(calc(1 - .05 * var(--hero-p,0)));
 }
 html.js .hero__glow{opacity:calc(1 - .85 * var(--hero-p,0))}
-/* 收缩的时候四周的小字要淡掉。
-   这里【只能用 filter:opacity()，不能用 opacity】——
-   .hero__eyebrow / .hero__foot 的孩子都挂着 forwards 的入场动画，
-   而带 forwards 的动画在层叠里压过普通声明：写 opacity 会被静默吃掉，
-   不报错、不生效（首屏那个"向下滚动"就正是这么被吃掉过一次）。
-   filter 不在这条冲突里，动画也不碰它。 */
-html.js .hero__eyebrow{
-  filter:opacity(calc(1 - min(1,var(--pin-p,0) * 1.7)));
-}
-html.js .hero__foot{
-  filter:opacity(calc(1 - min(1,var(--pin-p,0) * 1.7)));
-}
 
 /* --- 关于：左栏钉住，右栏滚过去 ---
    苹果那种"左边论点不动、右边论据一段段走过去"的叙事节奏。
@@ -1537,12 +1507,6 @@ html.js .contact__glow{
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
   .grain{display:none}
-  /* 钉住整段取消：跑道收回到一屏，首屏也不再被往下推。
-     不取消的话，关掉动效的人会滚过 72svh 却看到一个纹丝不动的首屏 ——
-     那不是"少了动画"，那是页面像卡住了。 */
-  .heroPin{height:100vh;height:100svh}
-  html.js .heroPin .hero{transform:none!important}
-  html.js .hero__eyebrow,html.js .hero__foot{filter:none!important}
   html.js [data-reveal]{opacity:1;transform:none}
   html.js .hero__eyebrow,
   html.js .hero__word,
@@ -1597,9 +1561,3 @@ html.scrub-off .skills__list i{transform:scaleX(1)!important}
 html.scrub-off .passion__figure img{transform:none!important}
 html.scrub-off .passion__figure{translate:none!important}
 html.scrub-off .passion__figure::after{transform:scaleX(1)!important}
-/* 钉住这条也一样：脚本挂了就没人推进 --pin-p，
-   跑道留着只会让人滚过一段完全静止的首屏，看着像页面坏了。 */
-html.scrub-off .heroPin{height:100vh;height:100svh}
-html.scrub-off .heroPin .hero{transform:none!important}
-html.scrub-off .hero__eyebrow,
-html.scrub-off .hero__foot{filter:none!important}

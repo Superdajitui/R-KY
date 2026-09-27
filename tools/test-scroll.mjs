@@ -149,14 +149,8 @@ check(vis.bars.every(t => /matrix\(1, 0, 0, 1, 0, 0\)/.test(t)), '技能进度�
   `${vis.bars.filter(t => !/matrix\(1, 0, 0, 1, 0, 0\)/.test(t)).length} 条未满`);
 
 /* --- 断言 4：首屏退场可逆 --- */
-/* 滚到【钉住跑道走完】那一点。不写死"2 屏"：
-   首屏现在有一段钉住跑道，写死屏数会在改跑道长度时失效 ——
-   而且失效的样子是"首屏还没退场"，看着像退场坏了，其实只是没滚够。 */
-const pastHero = await page.evaluate(() =>
-  Math.round(document.querySelector('.heroPin').getBoundingClientRect().bottom
-    + window.scrollY + 40));
-await page.evaluate(v => window.scrollTo(0, v), pastHero);
-await sleep(900);
+await page.evaluate((v) => window.scrollTo(0, v * 2), vh);
+await sleep(700);
 const gone = await page.evaluate(() => {
   const hero = document.querySelector('.hero');
   const stage = document.querySelector('.hero__stage');
@@ -170,86 +164,6 @@ const gone = await page.evaluate(() => {
 check(gone.heroP > 0.9, '滚过首屏后首屏已退场', `--hero-p=${gone.heroP.toFixed(2)}`);
 check(gone.stageOpacity < 0.2, '首屏内容已淡出', `opacity=${gone.stageOpacity.toFixed(2)}`);
 check(!/matrix\(1, 0, 0, 1, 0, 0\)/.test(gone.wordTf), '名字被拉开了', gone.wordTf);
-
-/* --- 断言 4b：钉住 + 向中间缩小 ---
-   用户要的是："下滑时保持整体不动，中间人物和名字向中间缩小，
-   缩小到一定程度后整体页面再往下滑动"。
-   "整体不动"是这一屏的核心，所以必须【逐点量】：沿着跑道取几个位置，
-   首屏在视口里的位置每一处都必须一样。 */
-{
-  const probe = async f => {
-    await page.evaluate(v => window.scrollTo({ top: Math.round(v), behavior: 'instant' }), Math.round(f));
-    await sleep(700);
-    return page.evaluate(() => {
-      const hero = document.querySelector('.hero');
-      const stage = document.querySelector('.hero__stage');
-      const cs = getComputedStyle(hero);
-      const m = new DOMMatrixReadOnly(cs.transform);
-      const sm = getComputedStyle(stage).transform;
-      const smx = sm === 'none' ? new DOMMatrixReadOnly('matrix(1,0,0,1,0,0)')
-        : new DOMMatrixReadOnly(sm);
-      const port = document.querySelector('.hero__portrait').getBoundingClientRect();
-      const word = document.querySelector('.hero__word--top').getBoundingClientRect();
-      return {
-        pinP: +(cs.getPropertyValue('--pin-p') || 0),
-        heroP: +(cs.getPropertyValue('--hero-p') || 0),
-        heroTop: Math.round(hero.getBoundingClientRect().top),
-        stageScale: +Math.sqrt(Math.abs(smx.a * smx.d - smx.b * smx.c)).toFixed(4),
-        portTop: Math.round(port.top), portH: Math.round(port.height),
-        wordTop: Math.round(word.top),
-        eyebrowFilter: getComputedStyle(document.querySelector('.hero__eyebrow')).filter,
-        push: Math.round(m.f),
-      };
-    });
-  };
-
-  const pinTop = await page.evaluate(() =>
-    document.querySelector('.heroPin').getBoundingClientRect().top + window.scrollY);
-  const pinLen = await page.evaluate(() =>
-    document.querySelector('.heroPin').offsetHeight - innerHeight);
-  console.log(`  钉住跑道: 顶端 ${Math.round(pinTop)}px  长度 ${pinLen}px`);
-
-  const pts = [0, .25, .5, .75, 1].map(f => pinTop + pinLen * f);
-  const rows = [];
-  for (const y of pts) rows.push(await probe(y));
-
-  console.log('  沿跑道取样:');
-  for (const [i, r] of rows.entries()) {
-    console.log(`    ${(i / (rows.length - 1) * 100).toFixed(0)}%  pinP=${r.pinP.toFixed(2)}  ` +
-      `首屏 top=${r.heroTop}  推回 ${r.push}px  缩放 ${r.stageScale.toFixed(3)}  ` +
-      `人物 top=${r.portTop}  名字 top=${r.wordTop}  heroP=${r.heroP.toFixed(2)}`);
-  }
-
-  const tops = rows.map(r => r.heroTop);
-  check(Math.max(...tops) - Math.min(...tops) <= 1 && Math.abs(tops[0]) <= 1,
-    '钉住期间首屏在视口里的位置完全不动（这就是"整体不动"）',
-    `top 波动 ${Math.max(...tops) - Math.min(...tops)}px`);
-
-  check(rows[0].pinP <= .02 && rows[rows.length - 1].pinP >= .98,
-    '跑道两端把进度走满（0 → 1）',
-    `${rows[0].pinP.toFixed(2)} → ${rows[rows.length - 1].pinP.toFixed(2)}`);
-
-  const scales = rows.map(r => r.stageScale);
-  check(scales.every((s, i) => i === 0 || s <= scales[i - 1] + 1e-3) && scales[0] > .98 && scales[scales.length - 1] < .7,
-    '人物和名字一路向中间缩小（单调收缩，不是忽大忽小）',
-    `缩放 ${scales.map(s => s.toFixed(2)).join(' → ')}`);
-
-  // 缩小是"向中间"的：人名在上、人物在下，两者应当互相靠拢
-  const gap0 = rows[0].portTop - rows[0].wordTop;
-  const gapN = rows[rows.length - 1].portTop - rows[rows.length - 1].wordTop;
-  check(gapN < gap0 * .8, '上下的距离在变小 —— 是"向中间收"，不是原地缩小',
-    `名字到人物 ${gap0}px → ${gapN}px`);
-
-  check(rows.every(r => r.heroP <= .02),
-    '钉住期间不做退场（收缩和退场是两段，不能重叠）',
-    `heroP 最大 ${Math.max(...rows.map(r => r.heroP)).toFixed(3)}`);
-
-  const fo = rows.map(r => r.eyebrowFilter);
-  check(/opacity\(0?\.?\d*\)|opacity\(1\)/.test(fo[fo.length - 1]) &&
-    parseFloat((fo[fo.length - 1].match(/opacity\(([\d.]+)\)/) || [0, 1])[1]) < .1,
-    '收缩时四周的小字淡掉（不然缩到 0.6 之后那些字小到看不清）',
-    `末尾 filter=${fo[fo.length - 1]}`);
-}
 
 await page.evaluate(() => window.scrollTo(0, 0));
 await sleep(900);
@@ -690,22 +604,6 @@ check(rm.bad.length === 0, '关闭动效时没有元素被藏在透明里',
 check(rm.lines === 0, '关闭动效时标题不再被裁切', `${rm.lines} 行仍偏移`);
 check(rm.bars === 0, '关闭动效时进度条直接显示为满', `${rm.bars} 条仍收起`);
 
-/* 钉住整段在关闭动效时必须取消。
-   不取消的话，关掉动效的人会滚过 72svh 却看到一个纹丝不动的首屏 ——
-   那不是"少了动画"，那是页面像卡住了 —— 比动画本身糟得多。
-   所以跑道要收回一屏、首屏不再被推回、小字也不淡出。 */
-const rmPin = await rp.evaluate(() => ({
-  runway: document.querySelector('.heroPin').offsetHeight,
-  vh: innerHeight,
-  heroTf: getComputedStyle(document.querySelector('.hero')).transform,
-  eyebrowFilter: getComputedStyle(document.querySelector('.hero__eyebrow')).filter,
-}));
-check(Math.abs(rmPin.runway - rmPin.vh) <= 1,
-  '关闭动效时钉住跑道收回到一屏（不会滚半天页面不动）',
-  `跑道 ${rmPin.runway}px / 视口 ${rmPin.vh}px`);
-check(rmPin.heroTf === 'none', '关闭动效时首屏不被推回', rmPin.heroTf);
-check(rmPin.eyebrowFilter === 'none', '关闭动效时小字不淡出', rmPin.eyebrowFilter);
-
 /* "减少动态效果"下，欢迎页那两个效果（逐字弹起 + 水波纹）必须【完全不启动】。
    不只是"看不见"：逐字那条要拆 DOM，水波纹那条会一直往一个满屏图层里画圈，
    在明确要求减少动效的机器上跑这些，本身就是错的。
@@ -796,38 +694,6 @@ const mob = await mp.evaluate(() => {
 });
 check(mob.bad.length === 0, '手机上滚到底也没有内容被藏住',
   mob.bad.length ? [...new Set(mob.bad)].join(' ') : '全部可见');
-
-/* 钉住在手机上也要成立：跑道 + 收缩都是 transform，
-   和桌面是同一套东西，没有理由只在桌面生效。 */
-const mobPin = await mp.evaluate(async () => {
-  const pin = document.querySelector('.heroPin');
-  const top = pin.getBoundingClientRect().top + scrollY;
-  const len = pin.offsetHeight - innerHeight;
-  /* 必须用 behavior:'instant'。站点上有 html{scroll-behavior:smooth}，
-     而这里是从页面【最底部】往回滚，平滑滚动要好几秒 ——
-     等 700ms 量到的还在半路上（首屏 top 会是 -566 这种数），
-     看着像"钉住坏了"，其实只是没滚到位。 */
-  const at = y => window.scrollTo({ top: Math.round(y), behavior: 'instant' });
-  const heroTop = () => Math.round(document.querySelector('.hero').getBoundingClientRect().top);
-  const scale = () => {
-    const t = getComputedStyle(document.querySelector('.hero__stage')).transform;
-    const m = t === 'none' ? null : new DOMMatrixReadOnly(t);
-    return m ? +Math.sqrt(Math.abs(m.a * m.d - m.b * m.c)).toFixed(3) : 1;
-  };
-  const wait = () => new Promise(r => setTimeout(r, 800));
-  at(top); await wait();
-  const a = { top: heroTop(), s: scale() };
-  at(top + len); await wait();
-  const b = { top: heroTop(), s: scale() };
-  return { len: Math.round(len), a, b };
-});
-console.log(`  手机钉住: 跑道 ${mobPin.len}px  首屏 top ${mobPin.a.top} → ${mobPin.b.top}  ` +
-  `缩放 ${mobPin.a.s} → ${mobPin.b.s}`);
-check(mobPin.len > 200, '手机上也有钉住跑道', `${mobPin.len}px`);
-check(mobPin.a.top === mobPin.b.top && Math.abs(mobPin.a.top) <= 1,
-  '手机上钉住期间首屏同样不动', `${mobPin.a.top} → ${mobPin.b.top}`);
-check(mobPin.b.s < mobPin.a.s - .2, '手机上人物和名字也会向中间缩小',
-  `${mobPin.a.s} → ${mobPin.b.s}`);
 
 /* 手机上欢迎页那套效果：逐字【要】跑，水面【不要】跑。
    两道闸门是分开的 ——

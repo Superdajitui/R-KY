@@ -98,11 +98,6 @@
 
   const scrubEls = [];
   let heroEl = null;
-  let pinEl = null;                 // 首屏外面那层"钉住跑道"
-  let pinPx = 0;                    // 跑道长度（px），CSS 和 JS 共用这一个值
-  let pinCur = 0, pinTarget = 0;    // 钉住进度：0=刚进首屏，1=收缩完成
-  let pinPainted = null;
-  const PIN_VH = .72;               // 跑道占几屏高
 
   // 取元素在文档里的【布局】纵坐标：累加 offsetTop。
   // 不受 transform 影响，也不需要 getBoundingClientRect 那样触发重排。
@@ -161,33 +156,12 @@
       it.toPx = Math.min(Math.max(it.to * vh, highest), fromPx - 80);
       it.fromPx = fromPx;
     }
-    /* 钉住跑道：长度按屏高算，然后【写成 px 写回 CSS】。
-       两处各写一份（CSS 一个 72svh、JS 一个 0.72*vh）迟早会对不上 ——
-       改了其中一处，跑道和推回量就会差一截，表现是钉住时首屏缓慢上飘，
-       而且只在某些屏幕高度下才看得出来。
-       量的是 .heroPin（外层的跑道）而不是 .hero：
-       首屏自己带着"推回去"的 transform，量它会量到一个动过的位置。 */
-    pinEl = $('.heroPin');
-    if (pinEl) {
-      pinPx = Math.round(vh * PIN_VH);
-      pinEl.style.setProperty('--pin-len', pinPx + 'px');
-      pinEl.__top = layoutTop(pinEl);
-    }
     heroEl = $('.hero');
-    if (heroEl) heroEl.__top = pinEl ? pinEl.__top : layoutTop(heroEl);
+    if (heroEl) heroEl.__top = layoutTop(heroEl);
     // 量完之后立刻按当前滚动位置算一遍，避免 resize 后停在旧进度上
     updateTargets(window.scrollY, vh);
     for (const it of scrubEls) it.cur = it.target;
-    pinCur = pinTargetAt(window.scrollY);
     paint();
-  }
-
-  /* 钉住进度：跑道顶端进入视口 → 0，走完整条跑道 → 1。
-     和退场进度一样直接算 scrollY，不拿元素位置量：
-     首屏自己带着"推回去"的变换，量它会量到一个已经被推过的位置。 */
-  function pinTargetAt(y) {
-    if (!pinEl || !pinPx) return 0;
-    return clamp01((y - pinEl.__top) / pinPx);
   }
 
   // 只算数，不碰 DOM
@@ -262,13 +236,6 @@
         heroEl.style.setProperty('--hero-p', hv);
       }
     }
-    if (heroEl) {
-      const pv = pinCur.toFixed(4);
-      if (pv !== pinPainted) {
-        pinPainted = pv;
-        heroEl.style.setProperty('--pin-p', pv);
-      }
-    }
   }
 
   let heroCur = 0;
@@ -282,23 +249,13 @@
 
     updateTargets(y, vh);
 
-    // 首屏退场：从【钉住走完】那一点起算，再滚 0.5 屏到 1。
-    // 起点必须加上跑道长度 —— 还在钉住的那一段里，首屏本来就该纹丝不动，
-    // 退场要是从首屏顶端就开始算，收缩到一半它已经在淡出了。
-    const pinDone = vh * PIN_VH;
-    const heroTarget = heroEl
-      ? clamp01((y - heroEl.__top - pinDone) / (vh * 0.5)) : 0;
+    // 首屏退场：以"滚过首屏"为 0 点，再滚 0.85 屏到 1。
+    // 直接算 scrollY 而不是拿 hero 的位置量 —— 首屏本来就在最上面，
+    // 这样 0 点非常明确：欢迎页还没走完时它一直是 0。
+    const heroTarget = heroEl ? clamp01((y - heroEl.__top) / (vh * 0.85)) : 0;
     heroCur = damp(heroCur, heroTarget, dt, 90);
 
-    pinTarget = pinTargetAt(y);
-    pinCur = damp(pinCur, pinTarget, dt, 80);
-
-    // 收敛之后精确吸附，和上面那些 scrub 元素一个规矩。
-    // 不吸附的话进度会一直差着千分之几，推回量差 1px ——
-    // "整体不动"的检查就会量到 ±1px 的抖动。
     let busy = Math.abs(heroCur - heroTarget) > 0.0008;
-    if (Math.abs(pinTarget - pinCur) > 0.0008) busy = true;
-    else pinCur = pinTarget;
     for (const it of scrubEls) {
       it.cur = damp(it.cur, it.target, dt, 85);
       if (Math.abs(it.target - it.cur) > 0.0008) busy = true;

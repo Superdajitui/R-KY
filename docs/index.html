@@ -31,7 +31,7 @@
 <!-- 开场页第一眼就是中文大字，中文字体必须一起预加载，
      否则会先闪一下系统字体再换过来 -->
 <link rel="preload" href="assets/fonts/noto-sans-sc-subset.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="assets/css/style.css?v=ab4ceefc">
+<link rel="stylesheet" href="assets/css/style.css?v=ae5bc3de">
 <noscript><style>
   /* 无脚本兜底：不让预加载遮罩和欢迎页挡住内容，一切静态可见。
      底部三件套和 KERRY 的每个字母都是各自入场的，漏一个就会缺一块。 */
@@ -154,12 +154,6 @@
 <main>
 
   <!-- ══════════ 首屏 ══════════ -->
-  <!-- 首屏外面这层是"钉住"用的跑道：
-     .heroPin 比一屏高出一段，滚动走过这一段时首屏被推到原位看起来没动，
-     同时人物和名字向中间缩小；走完这一段，页面才真正往下滚。
-     用变换做而不是 position:sticky —— body 上有 overflow-x:hidden，
-     那会让 body 变成滚动容器，sticky 在它下面根本不生效。 -->
-<div class="heroPin">
   <section class="hero" id="hero">
     <div class="hero__grid" aria-hidden="true">
       <i></i><i></i><i></i><i></i>
@@ -208,7 +202,6 @@
       </div>
     </div>
   </section>
-</div>
 
   <!-- ══════════ 跑马灯 ══════════
        同一句重复 8 遍，动画走 -12.5%（正好是一遍的宽度），首尾相接无限循环。
@@ -489,6 +482,6 @@
   </div>
 </footer>
 
-<script src="assets/js/main.js?v=fdf06cb2"></script>
+<script src="assets/js/main.js?v=af9e3d20"></script>
 </body>
 </html>
