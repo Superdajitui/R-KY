@@ -909,19 +909,32 @@
   /* ---------------------------------------------------------
      12. 欢迎页背景：风中的折叠箔片（照着 reactbits 的 Aero Shards）
      ---------------------------------------------------------
-     原版是 WebGPU 组件：vgpu 依赖、WGSL 着色器、三千多个实例，
+     原版是 WebGPU 组件：vgpu 依赖、WGSL 着色器、3200~4800 个实例，
      外加泛光/颗粒/色散三档后处理。这个站是零依赖的静态站 ——
-     把一整套 WebGPU 管线搬进来既不现实、也不符合这个站一贯的取舍，
-     而且 WebGPU 到现在都没有广泛支持：搬进来的结果是相当一部分访客
-     只看到一片空白。所以这里用 Canvas 2D 复刻它的【观感】。
+     把一整套 WebGPU 管线搬进来等于推倒重来，而且 WebGPU 到现在都没有
+     广泛支持：搬进来的结果是相当一部分访客只看到一片空白。
+     所以这里用 Canvas 2D 复刻它的【观感】，公式照着原版着色器抄。
 
-     复刻的核心是【折过的四边形】：
-       · 六个顶点、两个三角面，中间的折痕（z 从 0 抬到 0.34）让两个面的
-         法线朝向不同 —— 同一片箔上于是有了明暗两面。这是整个效果的命根子，
-         没有折痕就只是几百块飘着的色块。
-       · 每帧把六个顶点做三维旋转、再透视投影，按各自法线与光线的夹角着色：
-         背光压暗、迎光推向亮色，正对光的才吃高光。
-       · 三百多片沿一条风道流动，各自带横向车道偏移和深度（远的更小更暗）。
+     照抄的部分（改了会立刻看出不像，别凭感觉动）：
+       · 折过的四边形。六个顶点、两个三角面，折痕把 z 从 0 抬到 0.34，
+         两个面的法线于是不同 —— 这是整个效果的命根子，没有折痕就只是
+         几百块飘着的色块。（原版 shardVertex()，这里逐字一样）
+       · fullPath() 的流线、world → NDC 的投影、1/max(.62,1-z*.34) 的透视。
+         投影这里踩过一次：世界坐标里【一个单位铺满整屏】（不是半个），
+         少乘这一下整条风道会被压扁一半，画面上下都空着。
+       · 车道分布、宽度包络、碎片尺寸分布 —— 原版 vs_main 里那几行。
+         尺寸里的 pow(seedScale,12)*1.55 是关键：它甩出极少数大片，
+         于是画面同时有"细屑"和"大箔"两层，全用中等尺寸就死板了。
+       · pearl 材质的 BRDF：两个 softbox 反射 + 53.8 次方的高光 + 菲涅尔
+         + ACES 色调映射。这一块是"发光的箔"和"几百块色片"的分界线 ——
+         高光的形状决定了金属感，凭感觉调不出来。
+       · 指针力场：沿流向弯曲的高斯。峰值位移只有 ~32px，而且落在离光标
+         150px 开外 —— 它靠长尾【把箔片拨开】，从不把一块区域清空。
+         第一版写成 (1-d²) 硬边界、推力还大于半径，光标底下才会是个黑洞。
+       · 涟漪：sin(age*10)*exp(-age*3.2) 的波，径向推走 + 顺带提亮。
+
+     没搬的：泛光/色散（Canvas 2D 里做不起，而且这个站本来就有一层颗粒
+     滤镜）、ASCII/dither（原版的可选效果，默认不开）、GPU 实例化。
 
      性能帐：每片的数学只有几十次浮点，瓶颈在 Canvas 的填充次数上
      （每片两个三角形）。所以数量按设备分档，并且会按【实测帧时】自动降级 ——
@@ -930,79 +943,139 @@
   if (shardCv && !reduce) {
     const g2 = shardCv.getContext('2d', { alpha: true });
     if (g2) {
-      /* 用户指定的两个颜色（reactbits 那个链接里的 shardColor / accentColor）。
-         底色用站里的墨黑，和原版默认的 rgb(18,15,23) 是同一档暗度。 */
-      const BASE = [0xae, 0xff, 0x32];
-      const HI = [0xcc, 0xff, 0x7f];
-      // 光从左上来，和页面里其它高光的方向一致
-      const LIGHT = (() => {
-        const v = [-0.38, 0.58, 1];
-        const m = Math.hypot(...v);
-        return v.map(n => n / m);
-      })();
+      const PI = Math.PI;
+      const sat = v => (v < 0 ? 0 : v > 1 ? 1 : v);
+      const sstep = (a, b, x) => { const t = sat((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+      const mixN = (a, b, t) => a + (b - a) * t;
 
-      /* 一片箔的局部几何：一条竖脊，两侧各折下去。
-         脊上的 z 抬起来（0.34），两侧尖端落到 0 —— 折痕就是这么来的。 */
+      /* ---- 颜色 ----
+         碎片本体用站里的高亮色 --neon #d2ff00（用户指定"换成网站高亮色"），
+         迎光面由 accentColor #ccff7f 按 pearl 的 highlightMix=0.78 混白 ——
+         这是原版的算法，不是随手提亮：混白比例决定了高光有多"珍珠"。 */
+      const SR = 0xd2 / 255, SG = 0xff / 255, SB = 0x00 / 255;
+      const AR = 0xcc / 255, AG = 0xff / 255, AB = 0x7f / 255;
+      const HM = .78;
+      const HR = mixN(AR, 1, HM), HG = mixN(AG, 1, HM), HB = mixN(AB, 1, HM);
+
+      /* ---- 材质与光：material="pearl" 的预设，光的方向是原版的 [-.38,.58,1] ---- */
+      const ROUGH = .46, BRIGHT = .92, GLOW = .54;
+      const EXPOSURE = 1.12;                    // 暗底 lightSurface=0 → 1.12
+      const SPEC_POW = mixN(92, 9, ROUGH);      // 53.8
+      const BROAD_GAIN = mixN(.3, .86, 1 - ROUGH);
+      const FRES_GAIN = .15 + GLOW * .16;
+      const LL = Math.hypot(-.38, .58, 1);
+      const KX = -.38 / LL, KY = .58 / LL, KZ = 1 / LL;
+      const SBOX_AR = -.34, SBOX_AY = .28, SBOX_AW = .52 + ROUGH * .3, SBOX_AH = .22 + ROUGH * .3;
+      const SBOX_BR = .48, SBOX_BY = -.08, SBOX_BW = .12, SBOX_BH = .72;
+      const FACET_NX = .394903, FACET_NZ = .918723;
+
+      /* ---- 流动参数：speed/spread/depth/turbulence/spin 全是默认值 1 ---- */
+      const TURB = .36;
+      const STRETCH = 1.034;
+      const SPEED = .34;                        // flowDistance += dt*speed*.34
+      const ROLL_RATE = 2.4;
+      const SHARD_W = .0125 * 1.1 * .96;        // shardWorldSize × shardSize × detail
+
+      /* ---- 交互：interaction="repel" / radius 1.5 / strength .5 ----
+         原版把 radius 再 ×2 才进 uniform，0.54 已经是换算完的世界单位。 */
+      const I_RADIUS = .18 * 1.5 * 2;
+      const I_STRENGTH = .5;
+      const SHIFT = .36, BEND = .65;
+      const PEAK_X = .6455, PEAK_V = .3916;     // x*exp(-1.2x²) 的极值点与极值
+
+      /* ---- 涟漪：原版的 RIPPLE_SPEED / RIPPLE_TAIL ---- */
+      const R_SPEED = 4.2, R_TAIL = 1.8;
+
+      /* ---- 分布：用原版的 hashU32，让碎片分布和原版【逐位一致】 ----
+         换成 Math.random() 也能跑，但那就不是同一片风了：
+         尺寸分布里 pow(seed,12) 那一项的形状完全取决于随机数的分布。 */
+      const hashU32 = v => {
+        const s = (Math.imul(v, 747796405) + 2891336453) >>> 0;
+        const w = Math.imul(((s >>> ((s >>> 28) + 4)) ^ s), 277803737) >>> 0;
+        return ((w >>> 22) ^ w) >>> 0;
+      };
+      const uf = v => hashU32(v) * (1 / 4294967296);
+
+      /* fullArc：原版 32 项查表。它不是恒等映射（起步比线性慢一点），
+         所以碎片在流线上的疏密不是均匀的 —— 省掉这一项，密度的呼吸感就没了。 */
+      const ARC = new Float32Array([
+        0.000000, 0.028092, 0.055939, 0.083892, 0.112291, 0.141449, 0.171637, 0.203033,
+        0.235650, 0.269282, 0.303537, 0.337982, 0.372308, 0.406392, 0.440263, 0.474026,
+        0.507794, 0.541636, 0.575553, 0.609470, 0.643257, 0.676761, 0.709855, 0.742465,
+        0.774594, 0.806319, 0.837790, 0.869218, 0.900862, 0.933020, 0.965991, 1.000000,
+      ]);
+      const arcAt = ph => {
+        const s = (ph < 0 ? 0 : ph > .999999 ? .999999 : ph) * 31;
+        const i = s | 0;
+        return ARC[i] + (ARC[i + 1] - ARC[i]) * (s - i);
+      };
+
+      /* 折过的四边形：一条竖脊，两侧各折下去。脊上的 z 抬到 0.34，折痕就是这么来的。 */
       const GEO = [
         [0, 1, .34], [-.72, 0, 0], [0, -1, .34],
         [0, 1, .34], [0, -1, .34], [.72, 0, 0],
       ];
 
-      // 按设备给数量：手机少、桌面多。DPR 也夹住，不然高倍屏上填充量翻几倍。
+      /* 数量按设备给量。原版 medium 档是 3200×1.5=4800 个实例 ——
+         WebGPU 里这不算什么，Canvas 2D 每片要两次 fill，账完全不一样。
+         但也不能按"每片看起来还行"去给：碎片铺满画面的比例决定了它读起来是
+         【发光的箔】还是【撒了一地的绿纸屑】。900 片时覆盖只有 1.2%，
+         那个密度下多数碎片退化成"一条细缝"，整幅就散掉了。
+         原版那个数量对应的覆盖在百分之十几，这里按帧时余量取到接近一半。
+         仍然会按实测帧时自动降级，档位就是下面的 COUNT_STEPS。 */
       const isSmall = innerWidth < 820;
-      const PRESET = isSmall
-        ? { count: 200, dpr: 1.5 }
-        : { count: 520, dpr: 2 };
+      const PRESET = isSmall ? { count: 800, dpr: 1.5 } : { count: 2600, dpr: 2 };
       const DPR = Math.min(devicePixelRatio || 1, PRESET.dpr);
 
-      let W = 0, H = 0, unit = 1, aspect = 1;
+      let W = 0, H = 0, aspect = 1, pathLen = 1;
       const size = () => {
         W = Math.max(1, Math.round(innerWidth * DPR));
         H = Math.max(1, Math.round(innerHeight * DPR));
         shardCv.width = W; shardCv.height = H;
-        // 世界坐标 y ∈ [-1,1] 铺满画面高度，x 按宽高比展开
-        unit = H / 2;
-        aspect = innerWidth / Math.max(innerHeight, 1);
+        aspect = W / Math.max(H, 1);
+        pathLen = Math.hypot(2.44 * aspect, Math.sqrt(5));
       };
       size();
 
-      /* 风道：从左到右横穿，带一点上下起伏和前后进深。
-         片子在 t=0 和 t=1 两端进出画面，所以看不出接缝。 */
-      const pathAt = (t, out) => {
-        const w = t * 2 - 1;
-        out[0] = w * aspect * 1.18;
-        out[1] = Math.sin((t * 1.72 - .2) * Math.PI) * .54 + Math.sin(t * Math.PI * 3) * .12;
-        out[2] = Math.cos((t * 2 - .7) * Math.PI) * .22;
-        return out;
-      };
-
+      /* 每片只算一次的量。之后每帧只做与相位有关的部分。 */
       const shards = [];
       for (let i = 0; i < PRESET.count; i++) {
+        const seedPhase = uf((Math.imul(i, 1664525) + 1013904223) >>> 0);
+        const seedLane = uf((Math.imul(i, 2246822519) + 3266489917) >>> 0);
+        const seedDepth = uf((Math.imul(i, 668265263) + 374761393) >>> 0);
+        const seedScale = uf((Math.imul(i, 1597334677) + 3812015801) >>> 0);
+        const looseSeed = uf((Math.imul(i, 3266489917) + 668265263) >>> 0);
+        const signed = seedLane * 2 - 1;
+        const xMul = mixN(.72, 1.08, seedLane), yMul = mixN(.82, 1.12, seedDepth);
+        const local = new Float64Array(18);
+        for (let k = 0; k < 6; k++) {
+          local[k * 3] = GEO[k][0] * xMul + (seedDepth - .5) * (1 - Math.abs(GEO[k][1] * yMul)) * .16;
+          local[k * 3 + 1] = GEO[k][1] * yMul;
+          local[k * 3 + 2] = GEO[k][2];
+        }
         shards.push({
-          phase: Math.random(),
-          // 横向车道：负几次方让分布中间密、两边疏，和原版的 pow(...,0.72) 一个意思
-          lane: Math.sign(Math.random() * 2 - 1) * Math.pow(Math.abs(Math.random() * 2 - 1), .72),
-          depth: Math.random() * 2 - 1,
-          size: .55 + Math.random() * .95,
-          tumble: Math.random() * Math.PI * 2,
-          // 翻滚速度分正负：全同向会像一整片在转，不像各自翻飞
-          tumbleV: (Math.random() * 2 - 1) * 1.5,
-          bright: .82 + Math.random() * .48,
+          seedPhase, seedLane, seedDepth,
+          lane: (signed < 0 ? -1 : 1) * Math.pow(Math.abs(signed), .72),
+          looseMul: 1 + sstep(.92, 1, looseSeed) * .72,
+          depthBase: seedDepth * 2 - 1,
+          rollOff: seedLane * 2 * PI,
+          rollDir: mixN(-1.5, 1.7, seedDepth),
+          // pow(seed,12) 是原版故意留的尾巴：绝大多数碎片很小，偶发一片大的
+          sizeBase: SHARD_W * (.46 + seedScale * .58 + Math.pow(seedScale, 12) * 1.55),
+          local,
         });
       }
 
-      const pointer = { x: -9, y: -9, px: -9, py: -9, power: 0, active: false };
-      // 点击推出的涟漪：年龄越大半径越大、越弱
+      const pointer = { x: -9, y: -9, presence: 0, active: false };
+      const hold = { id: null, amount: 0, vel: 0, phase: 0, t: 0 };
       const ripples = [];
 
-      const p0 = [0, 0, 0], p1 = [0, 0, 0];
-      const f = [0, 0, 0], u = [0, 0, 0], v = [0, 0, 0];
-      const pt = [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]];
-      const wv = [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]];
-
-      let travel = 0;
+      const px6 = new Float64Array(6), py6 = new Float64Array(6);
+      let travel = 0, flowDist = 0;
       let last = 0, raf = 0;
-      let slow = 0, level = 0;          // 帧时连续偏高就降级
+      let level = 0, lastCost = 0;
+      let frames = 0, pressure = 0, calm = 0, lastChange = 0;
+      const WARMUP = 90;                        // 前 ~1.5s 不计入判据
       const COUNT_STEPS = [1, .72, .5];
 
       const shardLive = () => window.scrollY < innerHeight * .98 && !document.hidden;
@@ -1014,178 +1087,357 @@
         last = now;
         const t0 = performance.now();
 
-        travel = (travel + dt * .028) % 1;
-        for (const r of ripples) r.age += dt;
-        while (ripples.length && ripples[0].age > 1.6) ripples.shift();
+        flowDist += dt * SPEED;
+        travel = (travel + (dt * SPEED) / pathLen) % 1;
 
-        // 指针：平滑跟随，松手后力度衰减
-        pointer.px += (pointer.x - pointer.px) * Math.min(1, dt * 9);
-        pointer.py += (pointer.y - pointer.py) * Math.min(1, dt * 9);
-        pointer.power += ((pointer.active ? 1 : 0) - pointer.power) * Math.min(1, dt * 6);
+        /* 指针：离开时衰减得比进入慢，力场是"缓缓散开"而不是"啪一下没"。
+           原版是临界阻尼弹簧，这里指数逼近同一件事，差在看不出。 */
+        const pr = pointer.active ? 24 : 12;
+        pointer.presence += ((pointer.active ? 1 : 0) - pointer.presence) * Math.min(1, dt * pr);
+        if (pointer.presence < .001) pointer.presence = 0;
+
+        const pWorldX = (2 * (pointer.x * DPR) / W - 1) * aspect;
+        const pWorldY = 1 - 2 * (pointer.y * DPR) / H;
+        // repel 取负；按住聚拢时把力场让出去
+        const force = -I_STRENGTH * pointer.presence * (1 - hold.amount);
+
+        /* 按住聚拢：短按仍然只是涟漪，按住超过 0.15s 才开始聚（原版同此）。 */
+        const prevT = hold.t;
+        hold.t = hold.id === null ? 0 : hold.t + dt;
+        const engaging = hold.id !== null && hold.t > .15;
+        const step = engaging && prevT < .15 ? hold.t - .15 : dt;
+        const want = engaging ? 1 : 0;
+        const resp = engaging ? 3.8 : 3.2;
+        const dec = Math.exp(-resp * step);
+        const o = hold.amount - want;
+        const mom = hold.vel + resp * o;
+        hold.amount = want + (o + mom * step) * dec;
+        hold.vel = (hold.vel - resp * mom * step) * dec;
+        if (Math.abs(hold.amount - want) < 1e-4 && Math.abs(hold.vel) < .001) { hold.amount = want; hold.vel = 0; }
+        if (hold.amount > 0) hold.phase += dt * (.35 + hold.amount * .5);
+
+        for (const r of ripples) r.age += dt;
+        while (ripples.length && ripples[0].age > ripples[0].life) ripples.shift();
 
         g2.setTransform(1, 0, 0, 1, 0, 0);
         g2.clearRect(0, 0, W, H);
 
         const n = Math.round(shards.length * COUNT_STEPS[level]);
-        const pointerActive = pointer.power > .02;
+        const halfW = W / 2, halfH = H / 2;
+        // 光跟着指针平移一点，箔面才有"被扫过"的反应（原版 light.w / shape.w）
+        const shiftX = (pointer.x * DPR / W - .5) * .38 * pointer.presence;
+        const shiftY = (pointer.y * DPR / H - .5) * -.24 * pointer.presence;
+        const sAr = SBOX_AR + shiftX * .36, sAy = SBOX_AY + shiftY * .36;
+        const sBr = SBOX_BR - shiftX * .2, sBy = SBOX_BY - shiftY * .2;
+        const holdAmt = hold.amount, holdPhase = hold.phase;
 
         for (let i = 0; i < n; i++) {
           const s = shards[i];
-          const t = (s.phase + travel) % 1;
-          pathAt(t, p0);
-          // 切线用差分算 —— 解析求导没必要，差分的误差在这个尺度上看不出来
-          pathAt((t + .002) % 1, p1);
-          f[0] = p1[0] - p0[0]; f[1] = p1[1] - p0[1]; f[2] = p1[2] - p0[2];
-          let m = Math.hypot(f[0], f[1], f[2]) || 1;
-          f[0] /= m; f[1] /= m; f[2] /= m;
+          const phase = (s.seedPhase + travel) % 1;
+          const t = arcAt(phase);
 
-          /* 车道偏移：横向铺开。
-             宽度包络【不能收到 0】—— 第一版用 (1-|2t-1|)^.5，
-             两端归零，于是所有片子在进出口都挤在同一条线上，
-             整片看起来只是中间一条带在动，画面上下都是空的。
-             现在两端也留 0.5，整幅铺满，中段最宽。 */
-          const w = .5 + .5 * (1 - Math.abs(t * 2 - 1)) ** .55;
-          const lane = s.lane * 1.15 * w;
-          let wx = p0[0] - f[1] * lane;
-          let wy = p0[1] + f[0] * lane + s.depth * .12;
-          let wz = p0[2] + s.depth * .3;
+          // ---- 流线上的位置与切线（fullPath） ----
+          const wx0 = mixN(-aspect * 1.22, aspect * 1.22, t);
+          const wy0 = Math.sin((t * 1.72 - .2) * PI) * .54 + Math.sin(t * 3 * PI) * .12;
+          const wz0 = Math.cos((t * 2 - .7) * PI) * .22;
+          const dx0 = aspect * 2.44;
+          const dy0 = Math.cos((t * 1.72 - .2) * PI) * 1.72 * PI * .54 + Math.cos(t * 3 * PI) * 3 * PI * .12;
+          const dz0 = -Math.sin((t * 2 - .7) * PI) * 2 * PI * .22;
+          const dl = Math.sqrt(dx0 * dx0 + dy0 * dy0 + dz0 * dz0) || 1;
+          let dxn = dx0 / dl, dyn = dy0 / dl, dzn = dz0 / dl;
+          const pnx = -dyn, pny = dxn;          // 横截面里与流向垂直的方向
 
-          // 指针排开：法向推走，越近越强
-          const cxp = pointer.px * DPR, cyp = pointer.py * DPR;
-          const sx0 = W / 2 + wx * aspect * unit * .5;
-          const sy0 = H / 2 - wy * unit * .5;
-          if (pointerActive) {
-            const dx = (sx0 - cxp) / (150 * DPR), dy = (sy0 - cyp) / (150 * DPR);
-            const d2 = dx * dx + dy * dy;
-            if (d2 < 1) {
-              const push = (1 - d2) * pointer.power * .34;
-              const dl = Math.hypot(dx, dy) || 1;
-              wx += (dx / dl) * push; wy -= (dy / dl) * push;
-            }
+          // ---- 车道：宽度包络 + 一点流致抖动，少数"散片"甩得更远 ----
+          const prof = .46 + Math.pow(Math.max(Math.sin(phase * PI), 0), .72) * .54;
+          const flowWave = Math.sin(phase * 37.6991118431 + s.seedDepth * 12);
+          const laneW = (s.lane * .56 + flowWave * .055 * TURB) * prof * s.looseMul;
+          let rx = wx0 + pnx * laneW;
+          let ry = wy0 + pny * laneW;
+          let rz = wz0 + s.depthBase + Math.cos(phase * 31.4159265359 + s.seedLane * 8) * .06 * TURB;
+
+          // ---- 指针力场：沿流向弯曲的高斯，长尾、没有硬边界 ----
+          if (force < -.0001 || force > .0001) {
+            const ox = (pWorldX - rx) / I_RADIUS, oy = (pWorldY - ry) / I_RADIUS;
+            const fx = pny, fy = -pnx;
+            const along = ox * fx + oy * fy;
+            const across = -ox * fy + oy * fx;
+            const a2 = along * along;
+            const layer = rz / Math.sqrt(1 + rz * rz);
+            const bend = (.22 * a2 + .12 * layer * along) / (1 + a2);
+            const ca = (across + bend) / (1 + layer * .18);
+            const fall = Math.exp(-.28 * a2 - 1.2 * ca * ca);
+            const ffx = ox * fall, ffy = oy * fall;
+            const proj = ffx * dxn + ffy * dyn;
+            const laX = ffx - dxn * proj, laY = ffy - dyn * proj;
+            rx += laX * force * SHIFT;
+            ry += laY * force * SHIFT;
+            // 顺带把流向掰一点：只推位置的话碎片是"平移"过去的，不像被风吹弯
+            const bx = dxn + laX * force * BEND, by = dyn + laY * force * BEND;
+            const bl = Math.sqrt(bx * bx + by * by + dzn * dzn) || 1;
+            dxn = bx / bl; dyn = by / bl; dzn = dzn / bl;
           }
-          // 点击涟漪：一圈向外扩张的推力
-          for (const r of ripples) {
-            const rx = (sx0 - r.x * DPR) / (260 * DPR), ry = (sy0 - r.y * DPR) / (260 * DPR);
-            const d = Math.hypot(rx, ry);
-            const ring = Math.exp(-((d - r.age * 1.9) ** 2) / .012) * (1 - r.age / 1.6);
-            if (ring > .02) {
-              const dl = d || 1;
-              wx += (rx / dl) * ring * .3;
-              wy -= (ry / dl) * ring * .3;
-            }
+
+          // ---- 按住聚拢：高斯云，中心密、边缘软，不是一圈硬边 ----
+          if (holdAmt > .00001) {
+            const radius = Math.sqrt(-2 * Math.log(Math.max(s.seedLane, .0001)));
+            const ang = s.seedPhase * 2 * PI + holdPhase * (.3 + s.seedDepth * .18);
+            const oX = Math.cos(ang), oY = Math.sin(ang);
+            const lay = s.seedDepth * 2 * PI;
+            const reach = Math.sqrt((rx - pWorldX) ** 2 + (ry - pWorldY) ** 2);
+            const amt = Math.pow(holdAmt, 1 + s.seedDepth * .65 + Math.min(reach, 4) * .12);
+            rx += (pWorldX + oX * radius * .2 + Math.sin(lay + holdPhase * .22) * .055 - rx) * amt;
+            ry += (pWorldY + oY * radius * .16 + Math.cos(lay * 1.7 - holdPhase * .18) * .055 - ry) * amt;
+            rz += ((s.seedDepth - .5) * .42 - rz) * amt;
+            const cl = Math.sqrt(oX * oX + oY * oY + Math.sin(lay) ** 2 * .1225) || 1;
+            const bx = mixN(dxn, -oY / cl, amt), by = mixN(dyn, oX / cl, amt), bz = mixN(dzn, Math.sin(lay) * .35 / cl, amt);
+            const bl = Math.sqrt(bx * bx + by * by + bz * bz) || 1;
+            dxn = bx / bl; dyn = by / bl; dzn = bz / bl;
           }
 
-          // 正交基：f 是流向，u/v 是横截面上的两个方向
-          const ul = Math.hypot(f[1], f[0]) || 1;
-          u[0] = -f[1] / ul; u[1] = f[0] / ul; u[2] = 0;
-          v[0] = -f[2] * u[1]; v[1] = f[2] * u[0]; v[2] = ul;
+          // ---- 涟漪：一圈向外扩张的波，同时把受波的面提亮 ----
+          let rippleLight = 0;
+          for (let k = 0; k < ripples.length; k++) {
+            const rp = ripples[k];
+            const persp = 1 / Math.max(.62, 1 - rz * .34);
+            const ddx = rx * persp - rp.x, ddy = ry * persp - rp.y;
+            const dist = Math.sqrt(ddx * ddx + ddy * ddy + .0016) - .04;
+            const a = rp.age - dist / R_SPEED;
+            if (a <= 0 || a >= R_TAIL) continue;
+            const wave = Math.sin(a * 10) * Math.exp(-a * 3.2) * sstep(0, .14, a) *
+              (1 - sstep(1.4, R_TAIL, a)) * rp.strength * I_STRENGTH;
+            if (wave === 0) continue;
+            const inv = 1 / (dist + .12);
+            const pxw = ddx * inv * wave * .28, pyw = ddy * inv * wave * .28, pzw = wave * .12;
+            rx += pxw; ry += pyw; rz += pzw;
+            rippleLight += Math.abs(wave);
+            const bx = dxn + pxw * .7, by = dyn + pyw * .7, bz = dzn + pzw * .7;
+            const bl = Math.sqrt(bx * bx + by * by + bz * bz) || 1;
+            dxn = bx / bl; dyn = by / bl; dzn = bz / bl;
+          }
+          if (rippleLight > 1.5) rippleLight = 1.5;
 
-          // 绕流向翻滚
-          const a = s.tumble + now * .001 * s.tumbleV;
-          const ca = Math.cos(a), sa = Math.sin(a);
-          const ux = u[0] * ca + v[0] * sa, uy = u[1] * ca + v[1] * sa, uz = u[2] * ca + v[2] * sa;
-          const vx = v[0] * ca - u[0] * sa, vy = v[1] * ca - u[1] * sa, vz = v[2] * ca - u[2] * sa;
+          // ---- 正交基 + 绕流向翻滚 ----
+          const sideX = -dyn, sideY = dxn;
+          const facX = -dzn * sideY, facY = dzn * sideX, facZ = dxn * sideY - dyn * sideX;
+          const roll = s.rollOff + flowDist * s.rollDir * ROLL_RATE;
+          const rc = Math.cos(roll), rs = Math.sin(roll);
+          const bsX = sideX * rc + facX * rs, bsY = sideY * rc + facY * rs, bsZ = facZ * rs;
+          const bfX = facX * rc - sideX * rs, bfY = facY * rc - sideY * rs, bfZ = facZ * rc;
 
-          // 世界尺寸：近（wz 小）大、远小
-          const persp = 1 / Math.max(.62, 1 - wz * .34);
-          const sc = s.size * .034 * persp;
-          /* sz 比 sx/sy 大：折痕要折得够深，两个面的法线才拉得开，
-             同一片箔上才有明显的明暗两面。第一版 sz 和 sy 一样大，
-             折角只有 19°，大半箔片看起来就是一块平的色片。 */
-          const sx = sc * 1.35, sy = sc * .78, sz = sc * 1.5;
+          // ---- 尺寸：depthScale 近大远小，scaleShape 造出"细屑 + 大箔" ----
+          const sizeW = s.sizeBase * mixN(.56, 1.58, sat(rz * .62 + .5));
+          const widthW = sizeW * .72, lenW = sizeW * 1.26 * STRETCH;
 
+          const L = s.local;
           for (let k = 0; k < 6; k++) {
-            const G = GEO[k];
-            const lx = G[0] * sx, ly = G[1] * sy, lz = G[2] * sz;
-            const X = wx + f[0] * lx + ux * ly + vx * lz;
-            const Y = wy + f[1] * lx + uy * ly + vy * lz;
-            const Z = wz + f[2] * lx + uz * ly + vz * lz;
+            const lx = L[k * 3], ly = L[k * 3 + 1], lz = L[k * 3 + 2];
+            const X = rx + dxn * ly * lenW + bsX * lx * widthW + bfX * lz * widthW;
+            const Y = ry + dyn * ly * lenW + bsY * lx * widthW + bfY * lz * widthW;
+            const Z = rz + dzn * ly * lenW + bsZ * lx * widthW + bfZ * lz * widthW;
             const pp = 1 / Math.max(.62, 1 - Z * .34);
-            // 世界 → 屏幕：y 轴翻转（世界向上 = 屏幕向上）
-            wv[k][0] = (W / 2 + X * aspect * unit * .5 * pp);
-            wv[k][1] = (H / 2 - Y * unit * .5 * pp);
-            wv[k][2] = Z;
+            px6[k] = halfW + (X / aspect) * pp * halfW;
+            py6[k] = halfH - Y * pp * halfH;
           }
+
+          // ---- 着色：pearl 材质的 BRDF，逐三角面 ----
+          const depthFog = sstep(-.68, .58, rz);
+          const dtr = mixN(AR * .52, SR, depthFog);
+          const dtg = mixN(AG * .52, SG, depthFog);
+          const dtb = mixN(AB * .52, SB, depthFog);
+          const bmR = mixN(SR, AR, s.seedLane);
+          const bmG = mixN(SG, AG, s.seedLane);
+          const bmB = mixN(SB, AB, s.seedLane);
+          const fogE = mixN(.42, 1, depthFog) * BRIGHT * EXPOSURE;
+          const alpha = mixN(.58, .97, depthFog);
+          const aS = alpha.toFixed(3);
+          const specDepth = mixN(.82, 1, s.seedDepth);
+          const prR = mixN(AR, HR, .18), prG = mixN(AG, HG, .18), prB = mixN(AB, HB, .18);
+
+          // viewDirection / halfDirection 对两个面是同一份
+          const vdx = -rx * .08, vdy = -ry * .08;
+          const vl = Math.sqrt(vdx * vdx + vdy * vdy + 1) || 1;
+          const vnx = vdx / vl, vny = vdy / vl, vnz = 1 / vl;
+          const hx0 = KX + vnx, hy0 = KY + vny, hz0 = KZ + vnz;
+          const hl = Math.sqrt(hx0 * hx0 + hy0 * hy0 + hz0 * hz0) || 1;
+          const hx = hx0 / hl, hy = hy0 / hl, hz = hz0 / hl;
+          let c1r = 0, c1g = 0, c1b = 0;
 
           for (let tri = 0; tri < 2; tri++) {
-            const a0 = wv[tri * 3], b0 = wv[tri * 3 + 1], c0 = wv[tri * 3 + 2];
-            // 面法线（屏幕空间够用：这里的透视很弱，差不出可见的偏差）
-            const e1x = b0[0] - a0[0], e1y = b0[1] - a0[1];
-            const e2x = c0[0] - a0[0], e2y = c0[1] - a0[1];
-            const nz = e1x * e2y - e1y * e2x;
-            if (nz === 0) continue;
-            // 屏幕 y 向下，法线的 z 分量取反才和世界一致
-            const nl = Math.hypot(e1x, e1y, nz) || 1;
-            const nX = -e1y / nl, nY = -nz / nl, nZ = e2x / nl;
-            const lit = Math.max(0, nX * LIGHT[0] + nY * LIGHT[1] + nZ * LIGHT[2]);
+            const lnx = tri === 0 ? -FACET_NX : FACET_NX;
+            const nx = bsX * lnx + bfX * FACET_NZ;
+            const ny = bsY * lnx + bfY * FACET_NZ;
+            const nz = bsZ * lnx + bfZ * FACET_NZ;
 
-            /* 环境光下限给到 .34：第一版是 .16，结果大半箔片掉进近黑，
-               整幅读起来是"暗绿的碎屑"，而不是参考那种【发光的箔】。
-               高光用 lit² 而不是 lit⁴：四次方太窄，只有正对光的那几片才吃得到，
-               中等受光的面全落在中间调上，画面就灰了。 */
-            const shade = (.34 + .66 * lit) * s.bright;
-            const hi = lit * lit;
-            const r = BASE[0] * shade * (1 - hi) + HI[0] * shade * hi;
-            const gg = BASE[1] * shade * (1 - hi) + HI[1] * shade * hi;
-            const bb = BASE[2] * shade * (1 - hi) + HI[2] * shade * hi;
-            g2.fillStyle = 'rgb(' + (r | 0) + ',' + (gg | 0) + ',' + (bb | 0) + ')';
+            const dn = nx * KX + ny * KY + nz * KZ;
+            const diffuse = dn > 0 ? dn : 0;
+            const hn = nx * hx + ny * hy + nz * hz;
+            const specular = hn > 0 ? Math.pow(hn, SPEC_POW) : 0;
+            const vn = nx * vnx + ny * vny + nz * vnz;
+            let fres = 1 - (vn > 0 ? vn : 0);
+            fres = fres * fres; fres = fres * fres;
+            const facet = mixN(.76, 1, sstep(-.08, .08, nx));
+
+            // reflect(-viewDir, normal)
+            const rd = 2 * vn;
+            const rxr = rd * nx - vnx, ryr = rd * ny - vny;
+            // softbox：exp(-(qx⁴+qy⁴)) —— 方形的柔光箱，两个叠出珍珠那种横竖两道光
+            let q1 = (rxr - sAr) / SBOX_AW, q2 = (ryr - sAy) / SBOX_AH;
+            if (q1 < 0) q1 = -q1; if (q2 < 0) q2 = -q2;
+            q1 *= q1; q2 *= q2;
+            const broad = Math.exp(-(q1 * q1 + q2 * q2));
+            q1 = (rxr - sBr) / SBOX_BW; q2 = (ryr - sBy) / SBOX_BH;
+            if (q1 < 0) q1 = -q1; if (q2 < 0) q2 = -q2;
+            q1 *= q1; q2 *= q2;
+            const strip = Math.exp(-(q1 * q1 + q2 * q2));
+
+            const lam = (.1 + diffuse * .3) * facet;
+            const bGain = broad * BROAD_GAIN * (1 + GLOW * .14);
+            const sGain = strip * (.12 + fres * .42);
+            const fGain = fres * FRES_GAIN;
+            const gGain = (broad * .045 + fres * .075) * GLOW;
+            const spec = specular * specDepth;
+            let cr = dtr * lam + HR * bGain + AR * sGain + HR * spec + bmR * fGain + AR * gGain;
+            let cg = dtg * lam + HG * bGain + AG * sGain + HG * spec + bmG * fGain + AG * gGain;
+            let cb = dtb * lam + HB * bGain + AB * sGain + HB * spec + bmB * fGain + AB * gGain;
+
+            if (rippleLight > 0) {
+              const g1 = rippleLight * (.85 + fres * .45);
+              cr += prR * g1; cg += prG * g1; cb += prB * g1;
+            }
+
+            // ACES 色调映射 + 曝光
+            cr *= fogE; cg *= fogE; cb *= fogE;
+            cr = sat(cr * (2.51 * cr + .03) / (cr * (2.43 * cr + .59) + .14));
+            cg = sat(cg * (2.51 * cg + .03) / (cg * (2.43 * cg + .59) + .14));
+            cb = sat(cb * (2.51 * cb + .03) / (cb * (2.43 * cb + .59) + .14));
+            if (tri === 1) { c1r = cr; c1g = cg; c1b = cb; }
+
+            const a0 = tri * 3;
+            g2.fillStyle = 'rgba(' + ((cr * alpha * 255) | 0) + ',' + ((cg * alpha * 255) | 0) +
+              ',' + ((cb * alpha * 255) | 0) + ',' + aS + ')';
             g2.beginPath();
-            g2.moveTo(a0[0], a0[1]);
-            g2.lineTo(b0[0], b0[1]);
-            g2.lineTo(c0[0], c0[1]);
+            g2.moveTo(px6[a0], py6[a0]);
+            g2.lineTo(px6[a0 + 1], py6[a0 + 1]);
+            g2.lineTo(px6[a0 + 2], py6[a0 + 2]);
             g2.closePath();
             g2.fill();
+          }
+
+          /* 折痕：原版在片元里沿 local.x≈0 加一条窄亮带，两端在 |local.y|>0.78 收掉。
+             这里直接把这根脊【描出来】—— 脊就是两个三角面的公共边。
+             太小的碎片上这根线不到一个像素，画了也是糊的，所以按屏幕长度跳过。 */
+          const egx = px6[2] - px6[0], egy = py6[2] - py6[0];
+          if (egx * egx + egy * egy > 9) {
+            const cl = .08 + specDepth * .22;
+            g2.strokeStyle = 'rgba(' + (((c1r + HR * cl) * alpha * 255) | 0) + ',' +
+              (((c1g + HG * cl) * alpha * 255) | 0) + ',' + (((c1b + HB * cl) * alpha * 255) | 0) +
+              ',' + aS + ')';
+            g2.lineWidth = 1;
+            g2.beginPath();
+            g2.moveTo(px6[0], py6[0]);
+            g2.lineTo(px6[2], py6[2]);
+            g2.stroke();
           }
         }
 
         raf = requestAnimationFrame(render);
 
         /* 帧时监控必须在【画完之后】量，量的必须是这一段画了多久。
-           第一版写成 performance.now() - now（now 是 rAF 的时间戳），
-           量到的是"回调什么时候开始"，跟渲染开销没关系 ——
-           于是自动降级永远不会触发，慢机器上只会一直掉帧。 */
+           写成 performance.now() - now（now 是 rAF 的时间戳）量到的是
+           "回调什么时候开始"，跟渲染开销没关系 —— 自动降级就永远不会触发。
+
+           降级的判据比"某一帧慢了"严格得多，这里返工过一次：
+           第一版是"累计 20 个坏帧就降"，于是在这台机器上跑两次，
+           一次落在 2600、一次落在 1300 —— 密度取决于页面加载那一刻的抖动。
+           同一个页面刷新两次看到不同密度，比一直用低密度更糟。
+           现在：跳过前 1.5s（加载期的抖动不代表稳态）、
+           要【连续 1.5s 都超过 12ms】才降（16.7ms 的预算，留 4ms 给别的）、
+           两次改动之间有 2.2s 冷却，并且一直很闲时会回升一档。 */
         const cost = performance.now() - t0;
-        slow = cost > 9 ? slow + 1 : Math.max(0, slow - 2);
-        if (slow > 20 && level < COUNT_STEPS.length - 1) { level++; slow = 0; }
+        lastCost = cost;
+        frames++;
+        if (frames > WARMUP) {
+          const nowMs = performance.now();
+          if (cost > 12) { pressure++; calm = 0; }
+          else if (cost < 7) { calm++; pressure = 0; }
+          else pressure = 0;
+          if (pressure > 90 && nowMs - lastChange > 2200 && level < COUNT_STEPS.length - 1) {
+            level++; pressure = 0; calm = 0; lastChange = nowMs;
+          } else if (calm > 720 && nowMs - lastChange > 8000 && level > 0) {
+            level--; pressure = 0; calm = 0; lastChange = nowMs;
+          }
+        }
       }
 
       const wake = () => { if (!raf && shardLive()) { last = 0; raf = requestAnimationFrame(render); } };
 
-      addEventListener('resize', () => {
-        size();
-        for (const s of shards) s.phase = Math.random();   // 换尺寸时重新布一次，避免挤成一团
-        wake();
-      }, { passive: true });
+      addEventListener('resize', () => { size(); wake(); }, { passive: true });
       addEventListener('scroll', () => { wake(); }, { passive: true });
       document.addEventListener('visibilitychange', () => { wake(); });
 
       if (canPointer) {
         addEventListener('pointermove', (e) => {
           pointer.x = e.clientX; pointer.y = e.clientY; pointer.active = true;
+          wake();
         }, { passive: true });
-        addEventListener('pointerleave', () => { pointer.active = false; }, { passive: true });
-        // 点击推一圈涟漪。欢迎页本身点了会往下滚，所以这圈涟漪是"顺手给一下"
+        addEventListener('pointerleave', () => { pointer.active = false; wake(); }, { passive: true });
+        /* 按下推一圈涟漪；按住不放把碎片收拢过来，松手再散开。
+           短按仍然只是一圈涟漪 —— 原版也是过了 0.15s 才开始聚。 */
+        const pushRipple = (u, v, strength) => {
+          ripples.push({
+            x: (u * 2 - 1) * aspect, y: 1 - v * 2, age: 0, strength,
+            life: Math.hypot((1 + Math.abs(u * 2 - 1)) * aspect, 1 + Math.abs(v * 2 - 1)) / R_SPEED + R_TAIL,
+          });
+          if (ripples.length > 4) ripples.shift();
+        };
         addEventListener('pointerdown', (e) => {
-          if (e.target instanceof Element && e.target.closest('a, button')) return;
-          ripples.push({ x: e.clientX, y: e.clientY, age: 0 });
+          if (e.target instanceof Element && e.target.closest('a, button, input, textarea, select')) return;
+          pushRipple(e.clientX / innerWidth, e.clientY / innerHeight, 1);
+          hold.id = e.pointerId; hold.t = 0;
+          wake();
         }, { passive: true });
+        addEventListener('pointerup', (e) => {
+          if (hold.id === null || e.pointerId !== hold.id) return;
+          hold.id = null;
+          if (hold.amount > .1) {
+            pushRipple(pointer.x / innerWidth, pointer.y / innerHeight, 1 + hold.amount * .8);
+          }
+          wake();
+        }, { passive: true });
+        addEventListener('pointercancel', () => { hold.id = null; }, { passive: true });
+        addEventListener('blur', () => { pointer.active = false; hold.id = null; });
       }
 
-      /* 第一帧画完再淡入，避免开场先闪一下空画布。
-         先画一帧再挂牌，所以这里手动调一次。 */
+      /* 第一帧画完再淡入，避免开场先闪一下空画布。 */
       last = 0;
       raf = requestAnimationFrame((t) => {
         render(t);
         shardCv.classList.add('is-ready');
       });
 
-      window.__shards = () => ({
-        running: !!raf,
-        count: Math.round(shards.length * COUNT_STEPS[level]),
-        level,
-        travel: +travel.toFixed(4),
-        ripples: ripples.length,
-      });
+      window.__shards = () => {
+        const halfCSS = innerHeight / 2;
+        const strength = I_STRENGTH * pointer.presence;
+        return {
+          running: !!raf,
+          count: Math.round(shards.length * COUNT_STEPS[level]),
+          level,
+          travel: +travel.toFixed(4),
+          ripples: ripples.length,
+          presence: +pointer.presence.toFixed(3),
+          hold: +hold.amount.toFixed(3),
+          cost: +lastCost.toFixed(2),
+          px: Math.round(pointer.x), py: Math.round(pointer.y),
+          /* 力场换算成 CSS 像素。峰值位移出现在离光标 ~157px 的地方、
+             大小只有 ~32px —— 它把箔片拨开，不会清空一块区域。
+             测试直接钉这个数：谁把力调成"推得比够得着还远"，画面就会出现黑洞。 */
+          force: {
+            radiusPx: Math.round(I_RADIUS * halfCSS),
+            peakPx: +(strength * SHIFT * halfCSS * PEAK_V).toFixed(1),
+            peakAtPx: Math.round(PEAK_X * I_RADIUS * halfCSS),
+          },
+        };
+      };
     }
   }
 

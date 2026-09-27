@@ -75,7 +75,7 @@ check(w.exists, '欢迎页存在');
 check(w.coversViewport, '铺满整个视口', w.box);
 check(w.position === 'fixed', 'fixed 定位（滚动时留在原地）');
 /* 底色现在是墨黑：发光箔片必须有暗处衬着才看得见 ——
-   柠檬绿 aeff32 和原来的霓虹底 d2ff00 几乎同色，放上去等于隐形。
+   碎片用的就是站里的高亮色 d2ff00，铺在同样是 d2ff00 的霓虹底上等于隐形。
    所以这条断言也跟着反过来：验的是"它够暗"。 */
 const welcomeLum = (() => {
   const m = (w.bg || '').match(/(\d+),\s*(\d+),\s*(\d+)/);
@@ -428,13 +428,15 @@ if (fxReady) {
     sh ? `${sh.w}×${sh.h}` : '找不到画布');
   check(sh && sh.ready && sh.opacity === 1, '画布已经淡入（不是停在透明的第一帧）',
     sh ? `ready=${sh.ready} opacity=${sh.opacity}` : '');
-  check(sh && sh.api && sh.api.running && sh.api.count > 100,
-    '箔片在跑，而且数量够（不是个位数的装饰）',
+  check(sh && sh.api && sh.api.running && sh.api.count > 600,
+    '箔片在跑，而且数量够（太少就只是撒了一地碎屑，不是流动的箔面）',
     sh && sh.api ? `${sh.api.count} 片 running=${sh.api.running}` : '没有调试钩子');
 
-  /* 颜色：用户指定 shardColor=#aeff32 / accentColor=#ccff7f，
+  /* 颜色：碎片本体是站里的高亮色 --neon #d2ff00，迎光面是同色系提亮的 #ccff7f，
      底色是站里的墨黑。逐像素量出来才对得上 —— 断言里写死十六进制没用，
-     真正画上去的是着色之后的颜色。 */
+     真正画上去的是着色之后的颜色。
+     所以这里不写死，直接拿 CSS 里的 --neon 换算成色相来比：
+     哪天再改配色，这条会跟着走，而不是变成一条"过期了但还在绿"的假断言。 */
   {
     const buf = await page.screenshot();
     const { data, info } = await sharp(buf).raw().toBuffer({ resolveWithObject: true });
@@ -446,7 +448,6 @@ if (fxReady) {
       // 只统计"发光的那部分"：绿通道明显高于红，且不是纯灰
       if (g > 90 && g > r + 20) {
         lit++; sumR += r; sumB += b;
-        // 色相（度）：aeff32 是 84° 左右，偏黄绿
         const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
         if (d) {
           let h = mx === g ? 60 * ((b - r) / d + 2) : 0;
@@ -456,14 +457,120 @@ if (fxReady) {
     }
     const pct = lit / total * 100;
     const hue = hueN ? hueSum / hueN : 0;
+    // CSS 里的高亮色，换算成色相
+    const neon = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--neon').trim());
+    const m = /^#?([\da-f]{6})$/i.exec(neon);
+    let neonHue = 0;
+    if (m) {
+      const n = parseInt(m[1], 16), r = n >> 16 & 255, g = n >> 8 & 255, b = n & 255;
+      const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+      neonHue = d ? (60 * ((b - r) / d + 2) + 360) % 360 : 0;
+    }
     console.log(`  箔片: 发光像素 ${pct.toFixed(2)}%  最亮绿 ${maxG}  ` +
-      `平均色相 ${hue.toFixed(0)}°（目标 aeff32 ≈ 84°）`);
+      `平均色相 ${hue.toFixed(0)}°（--neon ${neon} ≈ ${neonHue.toFixed(0)}°）`);
     check(pct > 1 && pct < 30, '箔片画出来了，而且是"碎屑"不是"整片"',
       `发光像素占 ${pct.toFixed(2)}%`);
-    check(hue > 70 && hue < 100, '颜色落在指定的柠檬绿上（aeff32 / ccff7f 都是这个色相）',
-      `${hue.toFixed(0)}°`);
+    check(neonHue > 0 && Math.abs(hue - neonHue) < 14,
+      '碎片颜色和站里的高亮色是同一个色相（不是另一档绿）',
+      `碎片 ${hue.toFixed(0)}° vs --neon ${neonHue.toFixed(0)}°`);
     // 折痕：同一片箔上要有明暗两面，全靠画面里同时存在亮绿和暗绿
     check(maxG > 180, '有迎光的亮面（不是整幅都压暗）', `最亮绿 ${maxG}`);
+  }
+
+  /* --- 鼠标周围的"空洞"有多大 ---
+     这条是返工留下来的。第一版影响半径 150px、推力 .34（≈153px）——
+     【推力比半径还大】，圈内的箔片被整个推出圈外、外面又没有补进来，
+     于是光标底下是一个直径 600px 的黑洞，整幅像被戳了个窟窿。
+     照原版的力场重做之后峰值位移只有 ~32px、而且落在 157px 开外，
+     靠高斯长尾把箔片拨开 —— 它从来不清空一块区域。
+     这里量两件事：光标底下最近的箔片有多远（黑洞会让它直接顶到上限），
+     以及力本身的量级。 */
+  {
+    /* 标题那圈霓虹描边跟碎片是同一个色，一起数进来密度会全错
+       （没藏的时候光标那格量出 23%，其实是「欢迎来到」的笔画）。 */
+    await page.evaluate(() => {
+      const s = document.createElement('style');
+      s.id = 'hole-measure';
+      s.textContent = '.welcome__grid,.welcome__top,.welcome__body,.welcome__foot,.cursor{visibility:hidden!important}';
+      document.head.appendChild(s);
+    });
+
+    /* 探测点不能随手定。风道的 lane 分布是【中间密、两边疏】，
+       随手取画面正中 (700,430) 正好落在密带下方 ~120px 的空带里，
+       于是"没光标时"量出来比"有光标时"还空，对照直接失效。
+       所以先从基线截图里把所有候选点扫一遍，挑最密的那个当探测点。 */
+    const grab = async () => {
+      const buf = await page.screenshot();
+      const { data, info } = await sharp(buf).raw().toBuffer({ resolveWithObject: true });
+      const dpr = await page.evaluate(() => devicePixelRatio || 1);
+      return { data, info, dpr };
+    };
+    const inkAt = (img, x, y) => {
+      for (let yy = y - 1; yy <= y + 1; yy++) {
+        for (let xx = x - 1; xx <= x + 1; xx++) {
+          if (xx < 0 || yy < 0 || xx >= img.info.width || yy >= img.info.height) continue;
+          const i = (yy * img.info.width + xx) * img.info.channels;
+          if (img.data[i + 1] > 60 && img.data[i + 1] > img.data[i] + 15) return true;
+        }
+      }
+      return false;
+    };
+    const nearestAt = (img, cx, cy) => {
+      const ds = [];
+      for (let k = 0; k < 72; k++) {
+        const a = k / 72 * Math.PI * 2;
+        let found = 400;
+        for (let r = 4; r <= 400; r += 4) {
+          if (inkAt(img, Math.round((cx + Math.cos(a) * r) * img.dpr), Math.round((cy + Math.sin(a) * r) * img.dpr))) {
+            found = r; break;
+          }
+        }
+        ds.push(found);
+      }
+      ds.sort((a, b) => a - b);
+      return { med: ds[ds.length >> 1], p90: ds[Math.floor(ds.length * .9)] };
+    };
+
+    // 光标先挪到角落，量一张"没有力场"的基线
+    await page.mouse.move(20, 840);
+    await sleep(800);
+    const baseImg = await grab();
+    let CX = 700, CY = 300, bestMed = 1e9;
+    for (let x = 240; x <= 1220; x += 140) {
+      for (let y = 140; y <= 760; y += 110) {
+        const m = nearestAt(baseImg, x, y).med;
+        if (m < bestMed) { bestMed = m; CX = x; CY = y; }
+      }
+    }
+    const base = nearestAt(baseImg, CX, CY);
+
+    await page.mouse.move(CX - 3, CY);
+    await page.mouse.move(CX, CY);
+    await sleep(800);
+    const st = await page.evaluate(() => window.__shards());
+    const held = nearestAt(await grab(), CX, CY);
+    console.log(`  探测点 (${CX},${CY})  光标周围最近的箔片: ` +
+      `没光标 中位 ${base.med}px；光标压住 中位 ${held.med}px（p90 ${held.p90}px）  力度 ${st.presence}`);
+    check(base.med < 60, '（对照）没有光标时画面是铺满的 —— 说明这个量法本身有效',
+      `中位 ${base.med}px`);
+    check(held.med < 130, '光标底下不会空出一大片（箔片是被拨开，不是被清空）',
+      `最近的箔片 ${held.med}px`);
+
+    /* 力的大小本身也钉一下：峰值位移必须远小于它的作用半径。
+       第一版出黑洞的根因就是这个比值反了 —— 推得比够得着还远，圈内必然被清空。 */
+    const f = st.force;
+    console.log(`  力场: 作用半径 ${f.radiusPx}px  峰值位移 ${f.peakPx}px（出现在 ${f.peakAtPx}px 处）`);
+    check(st.presence > .9, '（前提）光标停在那儿时力场已经充满，否则下面两条是空过的',
+      `presence=${st.presence}`);
+    check(f.peakPx < f.radiusPx * .5,
+      '峰值位移远小于作用半径（推得比够得着还远，就会清出一块空地）',
+      `峰值 ${f.peakPx}px vs 半径 ${f.radiusPx}px`);
+    check(f.peakPx < 60, '峰值位移是"拨一下"的量级，不是"搬走"', `${f.peakPx}px`);
+
+    await page.evaluate(() => { const s = document.getElementById('hole-measure'); if (s) s.remove(); });
+    await page.mouse.move(20, 840);
+    await sleep(150);
   }
 
   /* 滚过一屏之后必须停：每帧重绘的 canvas 不停就是白烧电。

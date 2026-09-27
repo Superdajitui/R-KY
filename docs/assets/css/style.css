@@ -394,7 +394,7 @@ em{font-style:normal}
   position:fixed;inset:0;z-index:1;
   /* 底色从霓虹翻成墨黑 —— 这一步是被效果本身逼出来的，不是审美选择：
      Aero Shards 的默认背景是 rgb(18,15,23)，碎片是【发光】的。
-     柠檬绿的碎片放在霓虹底上等于隐形（aeff32 和 d2ff00 几乎同色），
+     柠檬绿的碎片放在霓虹底上等于隐形（高亮色 d2ff00 和霓虹底是同一个色），
      要有那个效果就必须有暗的地方衬它。
      于是这一页和下面的首屏变成同一套暗底 + 霓虹，反而更连贯。 */
   background:var(--ink);color:var(--paper);
@@ -416,8 +416,9 @@ em{font-style:normal}
 .welcome__grid i:last-child{border-right:0}
 
 /* ---------- 欢迎页背景：风中的折叠箔片 ----------
-   照着 reactbits 的 Aero Shards 做的（用户指定 shardColor=#aeff32、
-   accentColor=#ccff7f）。tools/peek-aero.mjs 是当时把它源码抓下来的脚本。
+   照着 reactbits 的 Aero Shards 做的（碎片用站里的高亮色 --neon #d2ff00，
+   迎光面用同色系提亮一档的 #ccff7f）。tools/peek-aero.mjs 是当时把
+   它源码抓下来的脚本。
 
    原版是 WebGPU 组件：vgpu 依赖、WGSL 着色器、三千多个实例，
    外加泛光/颗粒/色散三档后处理。这个站是零依赖的静态站 ——
