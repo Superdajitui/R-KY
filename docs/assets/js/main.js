@@ -1043,7 +1043,11 @@
          0.30 太浅（切向只摆 ±0.94），0.45 摆到 ±1.41，
          从 36° 扫到 73°，才有"被风吹着转"的感觉。 */
       const MOB_Y0 = 1.12, MOB_BOW = .45;
-      const MOB_LANE = .40;                     // 竖屏下车道收窄，才读得出"流"
+      const MOB_LANE = .52;                     // 竖屏下车道宽度（桌面是 1）
+      /* 竖屏流线右端的 x 系数：1.22 是"和左端对称、正好从右下角出去"。
+         调小它就把带子的下端往画面里收 —— 1.0 时下端落在偏右、
+         0.78 时明显往左移一截。左端不动，所以起点仍在左上角外。 */
+      const MOB_X1 = .78;
 
       let W = 0, H = 0, aspect = 1, pathLen = 1, portrait = false;
       const size = () => {
@@ -1053,7 +1057,7 @@
         aspect = W / Math.max(H, 1);
         portrait = aspect < .82;
         pathLen = portrait
-          ? Math.hypot(2.44 * aspect, 2 * MOB_Y0)
+          ? Math.hypot(1.22 * aspect * (1 + MOB_X1), 2 * MOB_Y0)
           : Math.hypot(2.44 * aspect, Math.sqrt(5));
       };
       size();
@@ -1094,7 +1098,7 @@
       const px6 = new Float64Array(6), py6 = new Float64Array(6);
       let travel = 0, flowDist = 0;
       let last = 0, raf = 0;
-      let level = 0, lastCost = 0;
+      let level = 0, lastCost = 0, costAvg = 0;
       let frames = 0, pressure = 0, calm = 0, lastChange = 0;
       const WARMUP = 90;                        // 前 ~1.5s 不计入判据
       const COUNT_STEPS = [1, .72, .5];
@@ -1159,18 +1163,21 @@
           const t = arcAt(phase);
 
           // ---- 流线上的位置与切线 ----
-          const wx0 = mixN(-aspect * 1.22, aspect * 1.22, t);
-          let wy0, dy0;
+          const XP = aspect * 1.22;
+          let wx0, dx0, wy0, dy0;
           if (portrait) {
             // 左上 → 右下，中间向上弓一道（弓让"弯曲"看得见，否则就是一条直线）
+            wx0 = mixN(-XP, XP * MOB_X1, t);
+            dx0 = XP * (1 + MOB_X1);
             wy0 = MOB_Y0 - 2 * MOB_Y0 * t + MOB_BOW * Math.sin(t * PI);
             dy0 = -2 * MOB_Y0 + MOB_BOW * PI * Math.cos(t * PI);
           } else {
+            wx0 = mixN(-XP, XP, t);
+            dx0 = 2 * XP;
             wy0 = Math.sin((t * 1.72 - .2) * PI) * .54 + Math.sin(t * 3 * PI) * .12;
             dy0 = Math.cos((t * 1.72 - .2) * PI) * 1.72 * PI * .54 + Math.cos(t * 3 * PI) * 3 * PI * .12;
           }
           const wz0 = Math.cos((t * 2 - .7) * PI) * .22;
-          const dx0 = aspect * 2.44;
           const dz0 = -Math.sin((t * 2 - .7) * PI) * 2 * PI * .22;
           const dl = Math.sqrt(dx0 * dx0 + dy0 * dy0 + dz0 * dz0) || 1;
           let dxn = dx0 / dl, dyn = dy0 / dl, dzn = dz0 / dl;
@@ -1384,11 +1391,15 @@
            两次改动之间有 2.2s 冷却，并且一直很闲时会回升一档。 */
         const cost = performance.now() - t0;
         lastCost = cost;
+        /* 单帧 cost 的噪声很大（实测在 8~15ms 之间跳），拿它当判据要么永远
+           不触发、要么被一帧尖峰骗到。原版也是先做平滑（encodeAverage）
+           再判压力，这里照做：指数滑动平均，α=0.1。 */
+        costAvg = costAvg ? costAvg * .9 + cost * .1 : cost;
         frames++;
         if (frames > WARMUP) {
           const nowMs = performance.now();
-          if (cost > 12) { pressure++; calm = 0; }
-          else if (cost < 7) { calm++; pressure = 0; }
+          if (costAvg > 13) { pressure++; calm = 0; }
+          else if (costAvg < 6) { calm++; pressure = 0; }
           else pressure = 0;
           if (pressure > 90 && nowMs - lastChange > 2200 && level < COUNT_STEPS.length - 1) {
             level++; pressure = 0; calm = 0; lastChange = nowMs;
