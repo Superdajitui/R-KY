@@ -499,7 +499,11 @@ if (fxReady) {
     /* 探测点不能随手定。风道的 lane 分布是【中间密、两边疏】，
        随手取画面正中 (700,430) 正好落在密带下方 ~120px 的空带里，
        于是"没光标时"量出来比"有光标时"还空，对照直接失效。
-       所以先从基线截图里把所有候选点扫一遍，挑最密的那个当探测点。 */
+       所以先从基线截图里扫一遍候选点，挑最密的那个当探测点；
+       候选点还要离画面边至少 250px —— 贴着边的话圆盘有一半在画面外，
+       量出来的密度是假的（前两次分别选到了 (520,140) 和 (1000,200)，
+       都紧贴上沿，结论跟着乱跳）。 */
+    const R = 80, MARGIN = 250;
     const grab = async () => {
       const buf = await page.screenshot();
       const { data, info } = await sharp(buf).raw().toBuffer({ resolveWithObject: true });
@@ -507,55 +511,58 @@ if (fxReady) {
       return { data, info, dpr };
     };
     const inkAt = (img, x, y) => {
-      for (let yy = y - 1; yy <= y + 1; yy++) {
-        for (let xx = x - 1; xx <= x + 1; xx++) {
-          if (xx < 0 || yy < 0 || xx >= img.info.width || yy >= img.info.height) continue;
-          const i = (yy * img.info.width + xx) * img.info.channels;
-          if (img.data[i + 1] > 60 && img.data[i + 1] > img.data[i] + 15) return true;
-        }
-      }
-      return false;
+      if (x < 0 || y < 0 || x >= img.info.width || y >= img.info.height) return 0;
+      const i = (y * img.info.width + x) * img.info.channels;
+      return (img.data[i + 1] > 60 && img.data[i + 1] > img.data[i] + 15) ? 1 : 0;
     };
-    const nearestAt = (img, cx, cy) => {
-      const ds = [];
-      for (let k = 0; k < 72; k++) {
-        const a = k / 72 * Math.PI * 2;
-        let found = 400;
-        for (let r = 4; r <= 400; r += 4) {
-          if (inkAt(img, Math.round((cx + Math.cos(a) * r) * img.dpr), Math.round((cy + Math.sin(a) * r) * img.dpr))) {
-            found = r; break;
-          }
+    /* 圆环（不是圆盘）内的碎片占比。量"外圈有没有被动过"就必须用圆环：
+       圆盘会把核心一起算进去，核心一塌，外圈的数字跟着塌，
+       于是"力场是有范围的"这条永远过不了 —— 这就是它上一版挂掉的原因。 */
+    const ringInk = (img, cssX, cssY, r0, r1) => {
+      const cx = cssX * img.dpr, cy = cssY * img.dpr;
+      const a = r0 * img.dpr, b = r1 * img.dpr;
+      let n = 0, total = 0;
+      for (let y = Math.round(cy - b); y <= cy + b; y += 2) {
+        for (let x = Math.round(cx - b); x <= cx + b; x += 2) {
+          const dx = x - cx, dy = y - cy, d2 = dx * dx + dy * dy;
+          if (d2 < a * a || d2 > b * b) continue;
+          total++;
+          n += inkAt(img, x, y);
         }
-        ds.push(found);
       }
-      ds.sort((a, b) => a - b);
-      return { med: ds[ds.length >> 1], p90: ds[Math.floor(ds.length * .9)] };
+      return total ? n / total : 0;
     };
 
     // 光标先挪到角落，量一张"没有力场"的基线
-    await page.mouse.move(20, 840);
-    await sleep(800);
+    await page.mouse.move(20, 880);
+    await sleep(900);
     const baseImg = await grab();
-    let CX = 700, CY = 300, bestMed = 1e9;
-    for (let x = 240; x <= 1220; x += 140) {
-      for (let y = 140; y <= 760; y += 110) {
-        const m = nearestAt(baseImg, x, y).med;
-        if (m < bestMed) { bestMed = m; CX = x; CY = y; }
+    let CX = 700, CY = 450, best = -1;
+    for (let x = MARGIN; x <= 1440 - MARGIN; x += 80) {
+      for (let y = MARGIN; y <= 900 - MARGIN; y += 80) {
+        const d = ringInk(baseImg, x, y, 0, R);
+        if (d > best) { best = d; CX = x; CY = y; }
       }
     }
-    const base = nearestAt(baseImg, CX, CY);
+    const base = ringInk(baseImg, CX, CY, 0, R);
 
     await page.mouse.move(CX - 3, CY);
     await page.mouse.move(CX, CY);
-    await sleep(800);
+    await sleep(900);
     const st = await page.evaluate(() => window.__shards());
-    const held = nearestAt(await grab(), CX, CY);
-    console.log(`  探测点 (${CX},${CY})  光标周围最近的箔片: ` +
-      `没光标 中位 ${base.med}px；光标压住 中位 ${held.med}px（p90 ${held.p90}px）  力度 ${st.presence}`);
-    check(base.med < 60, '（对照）没有光标时画面是铺满的 —— 说明这个量法本身有效',
-      `中位 ${base.med}px`);
-    check(held.med < 130, '光标底下不会空出一大片（箔片是被拨开，不是被清空）',
-      `最近的箔片 ${held.med}px`);
+    const heldImg = await grab();
+    const held = ringInk(heldImg, CX, CY, 0, R);
+    const outerA = ringInk(baseImg, CX, CY, 110, 170);
+    const outerB = ringInk(heldImg, CX, CY, 110, 170);
+    console.log(`  探测点 (${CX},${CY})  碎片占比: 核心(≤${R}px) ` +
+      `${(base * 100).toFixed(2)}% → ${(held * 100).toFixed(2)}%  ` +
+      `外圈(110~170px) ${(outerA * 100).toFixed(2)}% → ${(outerB * 100).toFixed(2)}%`);
+    check(base > .02, '（对照）选出来的探测点本身是密的 —— 这个量法才有意义',
+      `基线 ${(base * 100).toFixed(2)}%`);
+    check(held > base * .15, '光标底下没有被清空（箔片是被拨开，不是被搬走）',
+      `${(base * 100).toFixed(2)}% → ${(held * 100).toFixed(2)}%`);
+    check(outerB > outerA * .6, '离光标 110px 之外基本没动（力场是有范围的）',
+      `${(outerA * 100).toFixed(2)}% → ${(outerB * 100).toFixed(2)}%`);
 
     /* 力的大小本身也钉一下：峰值位移必须远小于它的作用半径。
        第一版出黑洞的根因就是这个比值反了 —— 推得比够得着还远，圈内必然被清空。 */
