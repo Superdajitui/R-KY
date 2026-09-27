@@ -1027,13 +1027,34 @@
       const PRESET = isSmall ? { count: 800, dpr: 1.5 } : { count: 2600, dpr: 2 };
       const DPR = Math.min(devicePixelRatio || 1, PRESET.dpr);
 
-      let W = 0, H = 0, aspect = 1, pathLen = 1;
+      /* 竖屏（手机）走另一条流线：从左上弯到右下。
+         原版在窄屏下也有一条 mobilePath，但 placement="full" 时它【不生效】
+         （weightedPath 里 full 的权重把 compact 那支完全压掉了），
+         所以手机上和桌面跑的是同一条横向流线。
+         那条流线在竖屏下是坏的：车道偏移垂直于流向，而竖屏的 aspect≈0.46，
+         同样的世界坐标偏移横向会被 1/aspect 放大两倍多 ——
+         本来是"一条流"，糊成了"一整片竖向帘幕"，右下角还空着。
+         这里给竖屏单独一条：x 仍然线性铺满，y 换成"从 +1.12 走到 -1.12
+         再叠一道正弦弓"。结构上和桌面那条是同一个形状（x 线性、y 是 t 的函数），
+         所以下面的代码只用换 y 和 dy，不用分两套。 */
+      /* MOB_BOW 不只是"弯多少"，它还决定碎片朝向的变化幅度：
+         流向的斜率是 -2*MOB_Y0 + MOB_BOW*π*cos(πt)，
+         弓太小的话所有碎片都朝着同一个角度，整幅就平了。
+         0.30 太浅（切向只摆 ±0.94），0.45 摆到 ±1.41，
+         从 36° 扫到 73°，才有"被风吹着转"的感觉。 */
+      const MOB_Y0 = 1.12, MOB_BOW = .45;
+      const MOB_LANE = .40;                     // 竖屏下车道收窄，才读得出"流"
+
+      let W = 0, H = 0, aspect = 1, pathLen = 1, portrait = false;
       const size = () => {
         W = Math.max(1, Math.round(innerWidth * DPR));
         H = Math.max(1, Math.round(innerHeight * DPR));
         shardCv.width = W; shardCv.height = H;
         aspect = W / Math.max(H, 1);
-        pathLen = Math.hypot(2.44 * aspect, Math.sqrt(5));
+        portrait = aspect < .82;
+        pathLen = portrait
+          ? Math.hypot(2.44 * aspect, 2 * MOB_Y0)
+          : Math.hypot(2.44 * aspect, Math.sqrt(5));
       };
       size();
 
@@ -1124,6 +1145,7 @@
 
         const n = Math.round(shards.length * COUNT_STEPS[level]);
         const halfW = W / 2, halfH = H / 2;
+        const laneK = portrait ? MOB_LANE : 1;
         // 光跟着指针平移一点，箔面才有"被扫过"的反应（原版 light.w / shape.w）
         const shiftX = (pointer.x * DPR / W - .5) * .38 * pointer.presence;
         const shiftY = (pointer.y * DPR / H - .5) * -.24 * pointer.presence;
@@ -1136,12 +1158,19 @@
           const phase = (s.seedPhase + travel) % 1;
           const t = arcAt(phase);
 
-          // ---- 流线上的位置与切线（fullPath） ----
+          // ---- 流线上的位置与切线 ----
           const wx0 = mixN(-aspect * 1.22, aspect * 1.22, t);
-          const wy0 = Math.sin((t * 1.72 - .2) * PI) * .54 + Math.sin(t * 3 * PI) * .12;
+          let wy0, dy0;
+          if (portrait) {
+            // 左上 → 右下，中间向上弓一道（弓让"弯曲"看得见，否则就是一条直线）
+            wy0 = MOB_Y0 - 2 * MOB_Y0 * t + MOB_BOW * Math.sin(t * PI);
+            dy0 = -2 * MOB_Y0 + MOB_BOW * PI * Math.cos(t * PI);
+          } else {
+            wy0 = Math.sin((t * 1.72 - .2) * PI) * .54 + Math.sin(t * 3 * PI) * .12;
+            dy0 = Math.cos((t * 1.72 - .2) * PI) * 1.72 * PI * .54 + Math.cos(t * 3 * PI) * 3 * PI * .12;
+          }
           const wz0 = Math.cos((t * 2 - .7) * PI) * .22;
           const dx0 = aspect * 2.44;
-          const dy0 = Math.cos((t * 1.72 - .2) * PI) * 1.72 * PI * .54 + Math.cos(t * 3 * PI) * 3 * PI * .12;
           const dz0 = -Math.sin((t * 2 - .7) * PI) * 2 * PI * .22;
           const dl = Math.sqrt(dx0 * dx0 + dy0 * dy0 + dz0 * dz0) || 1;
           let dxn = dx0 / dl, dyn = dy0 / dl, dzn = dz0 / dl;
@@ -1150,7 +1179,7 @@
           // ---- 车道：宽度包络 + 一点流致抖动，少数"散片"甩得更远 ----
           const prof = .46 + Math.pow(Math.max(Math.sin(phase * PI), 0), .72) * .54;
           const flowWave = Math.sin(phase * 37.6991118431 + s.seedDepth * 12);
-          const laneW = (s.lane * .56 + flowWave * .055 * TURB) * prof * s.looseMul;
+          const laneW = (s.lane * .56 + flowWave * .055 * TURB) * prof * s.looseMul * laneK;
           let rx = wx0 + pnx * laneW;
           let ry = wy0 + pny * laneW;
           let rz = wz0 + s.depthBase + Math.cos(phase * 31.4159265359 + s.seedLane * 8) * .06 * TURB;

@@ -755,6 +755,52 @@ const mobPerf = await mp.evaluate(() => new Promise(res => {
 }));
 check(mobPerf < 25, '手机上加箔片之后帧间隔仍然够用（p95 < 25ms）',
   `p95 ${mobPerf}ms`);
+
+/* 手机上的流线方向：从左上弯到右下。
+   之前手机跑的是桌面那条横向流线，在竖屏下是坏的 ——
+   车道偏移垂直于流向，而竖屏 aspect≈0.46，横向会被 1/aspect 放大两倍多，
+   于是"一条流"糊成"一整片竖向帘幕"，画面下半截空着。
+   用户贴了截图之后给竖屏单独写了一条。这里就钉住那个失败的样子：
+   把画面切成九宫格数碎片占比，右下角必须是【有东西的】，
+   而且左上比右下密（说明方向是左上→右下，不是反过来）。 */
+const grid = await mp.evaluate(() => new Promise(res => {
+  const cv = document.querySelector('#shards');
+  const c = document.createElement('canvas');
+  c.width = cv.width; c.height = cv.height;
+  requestAnimationFrame(() => {
+    c.getContext('2d').drawImage(cv, 0, 0);
+    const g = c.getContext('2d');
+    const cellW = Math.floor(c.width / 3), cellH = Math.floor(c.height / 3);
+    const out = [];
+    for (let ry = 0; ry < 3; ry++) {
+      const row = [];
+      for (let rx = 0; rx < 3; rx++) {
+        const d = g.getImageData(rx * cellW, ry * cellH, cellW, cellH).data;
+        let ink = 0;
+        for (let i = 3; i < d.length; i += 4 * 7) if (d[i] > 12) ink++;
+        row.push(ink / (d.length / (4 * 7)));
+      }
+      out.push(row);
+    }
+    res(out);
+  });
+}));
+const pct = v => (v * 100).toFixed(1) + '%';
+console.log(`  手机上碎片的九宫格分布（占比）:\n` +
+  grid.map((r, i) => `    ${['上', '中', '下'][i]}  ${r.map(pct).join('  ')}`).join('\n'));
+check(grid[2][2] > .05, '右下角不是空的（竖屏下流线要一直走到右下）',
+  `右下 ${pct(grid[2][2])}`);
+check(grid[0][0] > grid[2][2], '左上比右下密 —— 方向是左上→右下，没有反过来',
+  `左上 ${pct(grid[0][0])} vs 右下 ${pct(grid[2][2])}`);
+check(grid[0][0] > .05 && grid[1][1] > .05 && grid[2][2] > .05,
+  '对角线（左上→正中→右下）是连着的，流线没有断成两截',
+  `左上 ${pct(grid[0][0])} 正中 ${pct(grid[1][1])} 右下 ${pct(grid[2][2])}`);
+/* 左下和右上本来就该空 —— 一条斜穿画面的流线必然留下这两个空角，
+   桌面那条横着的流线同样留着四个角。第一版这条断言写成"整幅都铺到了"，
+   是在要求一件跟"左上→右下"自相矛盾的事，它当然会挂。 */
+check(grid[2][0] < grid[0][0] && grid[0][2] < grid[0][0],
+  '空的是左下和右上两个角（斜向流线本来如此，不是只堆在某一条竖列上）',
+  `左下 ${pct(grid[2][0])} 右上 ${pct(grid[0][2])} vs 左上 ${pct(grid[0][0])}`);
 check(mobFx.inside === false, '手机上不挂悬停（触屏没有 hover，挂了只会把手指位置当悬停）',
   `inside=${mobFx.inside}`);
 check(mobFx.stroke !== '0px' && mobFx.fill !== 'none',
