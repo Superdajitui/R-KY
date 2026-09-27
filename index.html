@@ -60,19 +60,14 @@
      因为 position:fixed，滚回顶部还能再看到它。
      无脚本时由上面的 <noscript> 直接隐藏。 -->
 <div class="welcome" id="welcome">
-  <!-- 水波纹层：两层叠出来的"水面"。
-       · 深水层（#waveDeep）—— 极慢、极大、极淡的暗涌。
-         它不抢戏，作用是让人感到"水面下面还有水"。
-         少了这一层，表面涟漪就是浮在纯色上的圈，像贴纸。
-       · 表面涟漪（#wave）—— 一圈圈向外扩散的环。鼠标不动时随机位置自己冒，
-         移动时沿路径留下波纹往外晕开。
-       两层都放在网格线【下面】，压在上面才不会把网格糊掉。
-       波纹由 Web Animations 驱动，JS 只在"该冒一个"的时候跑一次，
-       没有常驻的 rAF 循环。纯装饰，aria-hidden；手机和"减少动效"下不启用。 -->
-  <div class="welcome__wave" aria-hidden="true">
-    <div class="welcome__deep" id="waveDeep"><i></i><i></i><i></i></div>
-    <div class="welcome__rip" id="wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-  </div>
+  <!-- 背景：风中的折叠箔片（照着 reactbits 的 Aero Shards 做的）。
+       每片是一个【折过的四边形】—— 六个顶点、两个三角面，中间那道折痕
+       让两个面的法线不同，同一片箔上就有了明暗两面。
+       用 Canvas 2D 画（见 main.js），不是 WebGPU：
+       原版那套管线（vgpu + WGSL + 三千实例 + 泛光后处理）
+       搬进零依赖的静态站既不现实、也没有广泛支持。
+       纯装饰，aria-hidden；"减少动效"下整层不启动。 -->
+  <canvas class="welcome__shards" id="shards" aria-hidden="true"></canvas>
 
   <div class="welcome__grid" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 

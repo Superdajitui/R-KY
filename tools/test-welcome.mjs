@@ -74,7 +74,15 @@ await page.screenshot({ path: 'tools/shots/welcome-1.png' });
 check(w.exists, '欢迎页存在');
 check(w.coversViewport, '铺满整个视口', w.box);
 check(w.position === 'fixed', 'fixed 定位（滚动时留在原地）');
-check(/210,\s*255,\s*0/.test(w.bg), '背景是主题色霓虹绿', w.bg);
+/* 底色现在是墨黑：发光箔片必须有暗处衬着才看得见 ——
+   柠檬绿 aeff32 和原来的霓虹底 d2ff00 几乎同色，放上去等于隐形。
+   所以这条断言也跟着反过来：验的是"它够暗"。 */
+const welcomeLum = (() => {
+  const m = (w.bg || '').match(/(\d+),\s*(\d+),\s*(\d+)/);
+  return m ? .299 * +m[1] + .587 * +m[2] + .114 * +m[3] : 255;
+})();
+check(welcomeLum < 40, '欢迎页底色是墨黑（发光箔片要有暗处衬）',
+  `${w.bg} 亮度 ${welcomeLum.toFixed(0)}`);
 check(w.titleText.includes('欢迎来到') && w.titleText.includes('我的个人网站'), '欢迎文案完整');
 check(w.heroBelowFold, '首屏还在折叠线以下', `top=${w.heroTop}`);
 check(w.bodyClass.includes('at-welcome'), '处于 at-welcome 状态');
@@ -172,8 +180,22 @@ const stroke = await page.evaluate(() => {
 console.log(`  描边由「${stroke.paintedBy}」绘制: ${stroke.width} ${stroke.color}`);
 console.log(`  填充层 ::after: content=${stroke.afterContent} color=${stroke.afterColor}`);
 check(stroke.width && stroke.width !== '0px', '描边宽度已设置', stroke.width);
-check(stroke.color && !/rgba?\([^)]*,\s*0\)/.test(stroke.color), '描边颜色不是透明', stroke.color);
-check(stroke.fillColor && /rgba?\([^)]*,\s*0\)/.test(stroke.fillColor), '底层文字填透明（只留描边）');
+
+/* 判断"是不是透明"必须看 alpha 通道。
+   原来用正则 /rgba?\([^)]*,\s*0\)/ —— 只要颜色里【任意一个通道】是 0 就算透明，
+   于是 rgb(210,255,0)（霓虹，完全不透明）被判成透明，报出假失败。
+   底色翻成墨黑之后描边改成了霓虹，这个假阳性立刻就冒出来了。
+   正确做法：只有 rgb(...)（三个分量）才是不透明，rgba(...) 看第四个分量。 */
+const alphaOf = c => {
+  const m = (c || '').match(/^rgba\(([^)]*)\)$/);
+  if (!m) return 1;
+  const parts = m[1].split(',');
+  return parts.length === 4 ? +parts[3] : 1;
+};
+check(alphaOf(stroke.color) > .5, '描边颜色不透明',
+  `${stroke.color} α=${alphaOf(stroke.color)}`);
+check(alphaOf(stroke.fillColor) < .1, '底层文字填透明（只留描边）',
+  `${stroke.fillColor} α=${alphaOf(stroke.fillColor)}`);
 check(stroke.afterContent !== 'none', '填充层存在', stroke.afterContent);
 // 拆字不能把字弄丢、也不能留个还在画整行填充的 ::after（会和逐字填充叠成双份）
 check(stroke.lineText === '我的个人网站', '拆字后这一行的文字完整',
@@ -186,7 +208,14 @@ if (stroke.split) {
     `${stroke.charCount} 个`);
 }
 
-// 数像素：镂空区域内必须有深色描边，且不能多到糊成一片
+/* 数像素：镂空区域内必须有描边，且不能多到糊成一片。
+   底色翻成墨黑之后，"墨量"要【反过来数亮的】——
+   数暗的话整片背景都是暗的，永远 90% 以上，报出"糊成实心"这种假失败
+   （第一版就是这么错的：88.95%）。
+   量之前把箔片画布遮掉：它也是柠檬绿的，混进来就分不清哪些像素是描边。
+   这条检查问的是"描边本身画对了没有"，与背景无关，隔离掉才是准的。 */
+const hideShards = await page.addStyleTag({ content: '#shards{display:none!important}' });
+await sleep(200);
 const shotBuf = await page.screenshot();
 const crop = {
   left: Math.max(0, stroke.box.x), top: Math.max(0, stroke.box.y),
@@ -194,12 +223,14 @@ const crop = {
   height: Math.min(stroke.box.h, 900 - stroke.box.y),
 };
 const { data, info } = await sharp(shotBuf).extract(crop).raw().toBuffer({ resolveWithObject: true });
-let ink = 0, total = info.width * info.height;
+let lit = 0, total = info.width * info.height;
 for (let i = 0; i < data.length; i += info.channels) {
-  if (data[i] < 110 && data[i + 1] < 110 && data[i + 2] < 110) ink++;
+  // 霓虹描边是 rgb(210,255,0)：绿通道顶格、蓝通道几乎为 0
+  if (data[i + 1] > 150 && data[i + 2] < 120) lit++;
 }
-const inkPct = ink / total * 100;
-console.log(`  镂空区域墨量: ${inkPct.toFixed(2)}%（只有描边 → 个位数；填充层丢了会更高）`);
+await hideShards.evaluate(el => el.remove());
+const inkPct = lit / total * 100;
+console.log(`  镂空区域霓虹量: ${inkPct.toFixed(2)}%（只有描边 → 个位数；填充层丢了会明显更高）`);
 check(inkPct > 0.5, '描边确实渲染出来了（不是隐形）', `${inkPct.toFixed(2)}%`);
 check(inkPct < 25, '没有糊成实心（填充层正常工作）', `${inkPct.toFixed(2)}%`);
 
@@ -377,305 +408,87 @@ if (fxReady) {
       `scat=${back2.scat} 仍有内联样式的字=${back2.dirty}`);
   }
 
-  /* --- 水波纹 ---
-     两个行为，分开验：
-       · 鼠标不动时自己冒（随机位置）—— 这是"水面"的底噪
-       · 鼠标移动时沿路径留下波纹 —— 这是"晕开" */
-  const rings = () => page.evaluate(() =>
-    [...document.querySelectorAll('#wave i')].map(el => {
-      const a = el.getAnimations()[0];
-      if (!a) return null;
-      const r = el.getBoundingClientRect();
-      return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2),
-        d: Math.round(r.width), op: +getComputedStyle(el).opacity,
-        p: +(a.effect.getComputedTiming().progress ?? 1).toFixed(3), state: a.playState };
-    }).filter(Boolean));
-
-  check((await page.evaluate(() => document.querySelectorAll('#wave i').length)) === 16,
-    '水波纹层是一个 16 个元素的复用池',
-    `${await page.evaluate(() => document.querySelectorAll('#wave i').length)} 个`);
-
-  // ① 鼠标不动：等几秒，应当自己冒出若干圈，而且位置各不相同
-  await page.mouse.move(20, 840);
-  await sleep(900);
-  const seen = [];
-  let maxAlive = 0;
-  for (let i = 0; i < 7; i++) {
-    await sleep(720);
-    const live = (await rings()).filter(r => r.state === 'running');
-    maxAlive = Math.max(maxAlive, live.length);
-    seen.push(...live.map(r => r.x + ',' + r.y));
-  }
-  const distinct = new Set(seen).size;
-  console.log(`  鼠标不动 5s：出现 ${seen.length} 圈次，不同位置 ${distinct} 个，` +
-    `同时最多 ${maxAlive} 圈`);
-  check(seen.length >= 3, '鼠标不动时纯色区会自己冒出水波纹',
-    `5 秒内 ${seen.length} 圈次`);
-  check(distinct >= 3, '波纹的位置是随机的（不是总在同一个点）',
-    `${distinct} 个不同位置`);
-
-  /* 显眼程度 —— "太不明显了"这个反馈必须变成一个能守住的数。
-     做法：挑一个正在跑的环，以它为中心裁一块，统计每个像素与霓虹底色的色差。
-     峰值色差就是波脊相对底色有多亮。低于 15% 基本就是"看不出有东西"。
-
-     采样取几次里最亮的一次，不是只采一帧：环的透明度是随时间涨落的，
-     恰好抽到一个正在淡出的，就会量出 15% 这种擦边的数，
-     让人分不清是"效果变淡了"还是"刚好赶上它快没了"。
-     （曾经真的掉下去过：主峰 .58 再乘动画的 0.28~0.62，有效透明度只剩 0.16~0.36。） */
-  {
-    const measure = async () => {
-      const top = (await rings()).filter(r => r.state === 'running')
-        .sort((a, b) => b.op - a.op)[0];
-      if (!top) return null;
-      const d = Math.max(140, Math.round(top.d * 1.15));
-      const box = {
-        left: Math.max(0, Math.min(1440 - d, top.x - d / 2)),
-        top: Math.max(0, Math.min(900 - d, top.y - d / 2)),
-        width: d, height: d,
-      };
-      const png = await page.screenshot();
-      // 缩放系数从截图本身推，不写死 —— 探针是 2 倍图、这里是 1 倍，
-      // 写死 2 就会裁出界（sharp 报 bad extract area）
-      const meta = await sharp(png).metadata();
-      const sx = meta.width / 1440;
-      const cut = {
-        left: Math.round(box.left * sx), top: Math.round(box.top * sx),
-        width: Math.round(box.width * sx), height: Math.round(box.height * sx),
-      };
-      cut.width = Math.min(cut.width, meta.width - cut.left);
-      cut.height = Math.min(cut.height, meta.height - cut.top);
-      const { data, info } = await sharp(png).extract(cut)
-        .raw().toBuffer({ resolveWithObject: true });
-      /* 只统计"比底色亮"的像素，并把近黑的排除掉。
-         不排除的话，裁剪框一旦叠到大标题的黑色笔画上，
-         量到的"峰值色差"其实是那几个字贡献的（黑 vs 霓虹，偏差接近 100%），
-         和波纹一点关系都没有 —— 第一次就量出个 69.5% 的假数。
-         霓虹底色本身不亮于自己，所以偏差为 0；波脊提亮，偏差为正。 */
-      const bgLum = .299 * 210 + .587 * 255;
-      let peak = 0, over = 0, total = 0;
-      for (let i = 0; i < data.length; i += info.channels) {
-        const r = data[i], g = data[i + 1], b = data[i + 2];
-        if (.299 * r + .587 * g + .114 * b < bgLum) { total++; continue; }
-        const dr = r - 210, dg = g - 255, db = b;
-        const v = Math.sqrt(dr * dr + dg * dg + db * db) / 441.7;
-        if (v > peak) peak = v;
-        if (v > .06) over++;
-        total++;
-      }
-      return { peak, area: over / total, d: top.d, op: top.op };
-    };
-
-    let best = null;
-    for (let i = 0; i < 5; i++) {
-      const m = await measure();
-      if (m && (!best || m.peak > best.peak)) best = m;
-      if (best && best.peak > .3) break;          // 已经够亮，不用再等
-      await sleep(420);
-    }
-    if (!best) {
-      check(false, '静态波纹足够明显', '几次采样都没有活跃的环，没法量');
-    } else {
-      console.log(`  最明显的环: ⌀${best.d} 峰值那刻不透明度 ${best.op.toFixed(2)}  ` +
-        `峰值色差 ${(best.peak * 100).toFixed(1)}%  受影响面积 ${(best.area * 100).toFixed(1)}%`);
-      check(best.peak > .15, '静态波纹足够明显（峰值色差 > 15%）',
-        `${(best.peak * 100).toFixed(1)}%`);
-      check(best.area > .01, '波纹覆盖了可感知的一小块面积', `${(best.area * 100).toFixed(1)}%`);
-    }
-  }
-
-  // ② 同一圈：必须一边扩大一边变淡 —— 这就是"晕开"
-  {
-    let grown = null;
-    for (let attempt = 0; attempt < 8 && !grown; attempt++) {
-      /* 必须挑一圈【已经过了最亮那一刻】的来比。
-         透明度是 0 → 峰值(18%) → 0，在峰值之前本来就是越来越亮，
-         拿一段跨过峰值的区间去比"变淡"，只会得到"变亮了"这种假失败。
-         所以要求起始进度落在 .3~.6：两头都稳稳在衰减段上。 */
-      const a0 = (await rings()).filter(r => r.state === 'running')
-        .sort((a, b) => a.p - b.p).find(r => r.p > .3 && r.p < .6);
-      if (!a0) { await sleep(450); continue; }
-      await sleep(420);
-      const a1 = (await rings()).find(r =>
-        Math.abs(r.x - a0.x) < 4 && Math.abs(r.y - a0.y) < 4 && r.p > a0.p);
-      if (a1) grown = { a0, a1 };
-    }
-    if (grown) {
-      console.log(`  同一圈: ⌀${grown.a0.d}→${grown.a1.d}  op ${grown.a0.op.toFixed(3)}→${grown.a1.op.toFixed(3)}  ` +
-        `p ${grown.a0.p}→${grown.a1.p}`);
-      check(grown.a1.d > grown.a0.d, '波纹会向外扩散（直径变大）',
-        `⌀${grown.a0.d} → ⌀${grown.a1.d}`);
-      check(grown.a1.op < grown.a0.op, '扩散的同时会变淡（这就是"晕开"）',
-        `${grown.a0.op.toFixed(3)} → ${grown.a1.op.toFixed(3)}`);
-    } else {
-      check(false, '波纹会向外扩散（直径变大）', '没抓到同一圈的两次采样');
-    }
-  }
-
-  /* --- "高级感"具体落在哪三件事上，逐条验 ---
-     这几条不是在验"动了没有"，而是在验【它凭什么是水的样子】。
-     参考的是 Andy Clarke 在 Smashing Magazine 上总结的环境动画原则：
-     慢而顺、无缝循环、用分层堆出复杂度。 */
-  const craft = await page.evaluate(() => {
-    const rip = document.querySelector('#wave i');
-    const deep = document.querySelector('#waveDeep i');
-    const parse = el => {
-      const m = getComputedStyle(el).backgroundImage
-        .match(/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/g) || [];
-      return m.map(s => {
-        const p = s.match(/[\d.]+/g).map(Number);
-        // r/g/b 必须一起带出来：后面要算合成色和色相
-        return { r: p[0], g: p[1], b: p[2], a: p[3] ?? 1,
-          lum: .299 * p[0] + .587 * p[1] + .114 * p[2] };
-      });
-    };
-    const pageLum = .299 * 210 + .587 * 255 + .114 * 0;   // 霓虹底色
-    const stops = parse(rip).filter(c => c.a > .05);
-    // 波峰/波谷个数：亮度在"比底色亮"和"比底色暗"之间来回切换了几次
-    let crests = 0, troughs = 0, prev = null;
-    for (const c of stops) {
-      const kind = c.lum > pageLum ? 'up' : 'down';
-      if (kind !== prev) { if (kind === 'up') crests++; else troughs++; prev = kind; }
-    }
-
-    /* "脏不脏"要能算出来，不然只能靠嘴说。两个量：
-       1) 色相偏移 —— 色标合成到底色上之后，色相与底色差多少。
-          同比例缩三个通道不会改变色相；缩的比例不一致就会被拉向绿/黄，混在霓虹里就是浑。
-       2) 明暗方向 —— 主体色标是【提亮】还是【压暗】。
-          高饱和亮底上压暗，眼睛读到的是"污渍"而不是"阴影"。
-       第一版就是压暗的（合成 L 0.39 vs 底色 0.50），用户直接说"画面有点脏"。 */
-    const toRGB = (c, a, bg) => [c.r * a + bg[0] * (1 - a),
-      c.g * a + bg[1] * (1 - a), c.b * a + bg[2] * (1 - a)];
-    const hslOf = ([r, g, b]) => {
-      const R = r / 255, G = g / 255, B = b / 255;
-      const mx = Math.max(R, G, B), mn = Math.min(R, G, B), d = mx - mn, l = (mx + mn) / 2;
-      let h = 0;
-      if (d) {
-        if (mx === R) h = 60 * (((G - B) / d) % 6);
-        else if (mx === G) h = 60 * ((B - R) / d + 2);
-        else h = 60 * ((R - G) / d + 4);
-      }
-      return { h: (h + 360) % 360, l };
-    };
-    const bgHSL = hslOf([210, 255, 0]);
-    const comps = stops.map(c => ({ ...hslOf(toRGB(c, c.a, [210, 255, 0])), a: c.a }));
-    const drift = Math.max(...comps.map(c =>
-      Math.min(Math.abs(c.h - bgHSL.h), 360 - Math.abs(c.h - bgHSL.h))));
-    const heaviest = comps.reduce((m, c) => (c.a > m.a ? c : m), comps[0]);
-    const darkest = Math.min(...comps.map(c => c.l));
-
+  /* --- 背景：风中的折叠箔片 ---
+     照着 reactbits 的 Aero Shards 做的（Canvas 2D 复刻观感，不是 WebGPU）。
+     这里验的是三件事：它在跑、它的颜色是用户指定的那两个、它会自己停。 */
+  const shardState = () => page.evaluate(() => {
+    const c = document.querySelector('#shards');
+    if (!c) return null;
+    const api = window.__shards ? window.__shards() : null;
     return {
-      stops: stops.length, crests, troughs,
-      brightest: Math.max(...stops.map(c => c.lum)),
-      darkest: Math.min(...stops.map(c => c.lum)),
-      pageLum, drift, heaviestL: heaviest.l, bgL: bgHSL.l, darkestL: darkest,
-      deepStops: parse(deep).filter(c => c.a > .05).length,
-      deepMax: Math.max(...parse(deep).map(c => c.a)),
-      ripMax: Math.max(...stops.map(c => c.a)),
+      ready: c.classList.contains('is-ready'),
+      opacity: +getComputedStyle(c).opacity,
+      w: c.width, h: c.height,
+      api,
     };
   });
-  console.log(`  表面剖面: ${craft.stops} 个色标，波峰 ${craft.crests} / 波谷 ${craft.troughs}，` +
-    `亮度 ${craft.darkest.toFixed(0)}~${craft.brightest.toFixed(0)}（底色 ${craft.pageLum.toFixed(0)}）`);
-  console.log(`  配色: 色相最大偏移 ${craft.drift.toFixed(2)}°  ` +
-    `主体明度 ${craft.heaviestL.toFixed(2)}（底色 ${craft.bgL.toFixed(2)}）  ` +
-    `最暗处 ${craft.darkestL.toFixed(2)}`);
-  console.log(`  深水剖面: ${craft.deepStops} 个色标，最大不透明度 ${craft.deepMax}（表面是 ${craft.ripMax}）`);
 
-  check(craft.crests >= 2 && craft.troughs >= 2,
-    '表面剖面是一列波（至少两个波峰跟在后头），不是单独一圈',
-    `${craft.crests} 峰 / ${craft.troughs} 谷`);
-  check(craft.brightest > craft.pageLum && craft.darkest < craft.pageLum,
-    '剖面上同时有比底色亮的波峰和比底色暗的波谷（有厚度，不是一条飘着的亮线）',
-    `亮 ${craft.brightest.toFixed(0)} 暗 ${craft.darkest.toFixed(0)} / 底色 ${craft.pageLum.toFixed(0)}`);
-  /* 下面两条是"画面会不会脏"的直接判据 —— 第一版两条都不合格 */
-  check(craft.heaviestL > craft.bgL,
-    '画面的主体是【提亮】的（高饱和亮底上压暗 = 污渍）',
-    `主体明度 ${craft.heaviestL.toFixed(2)} > 底色 ${craft.bgL.toFixed(2)}`);
-  check(craft.bgL - craft.darkestL < .06,
-    '暗带只压一点点（压狠了就是脏）',
-    `降到 ${craft.darkestL.toFixed(2)}，比底色低 ${(craft.bgL - craft.darkestL).toFixed(3)}`);
-  check(craft.drift < 1.5, '每个色标合成后色相都不偏（同比例缩通道 —— 缩的比例不一致就浑）',
-    `最大偏移 ${craft.drift.toFixed(2)}°`);
-  check(craft.deepMax < craft.ripMax * .7,
-    '深水层比表面层淡得多（它是"底"，不抢戏）',
-    `${craft.deepMax} < ${(craft.ripMax * .7).toFixed(2)}`);
-  check(craft.deepStops >= 3, '深水层的剖面是弥散的（不是一条硬边）',
-    `${craft.deepStops} 个色标`);
+  const sh = await shardState();
+  check(!!sh && sh.w > 0 && sh.h > 0, '箔片画布铺满了视口',
+    sh ? `${sh.w}×${sh.h}` : '找不到画布');
+  check(sh && sh.ready && sh.opacity === 1, '画布已经淡入（不是停在透明的第一帧）',
+    sh ? `ready=${sh.ready} opacity=${sh.opacity}` : '');
+  check(sh && sh.api && sh.api.running && sh.api.count > 100,
+    '箔片在跑，而且数量够（不是个位数的装饰）',
+    sh && sh.api ? `${sh.api.count} 片 running=${sh.api.running}` : '没有调试钩子');
 
-  // 每个环的朝向/扁度都不一样 —— 完美正圆一眼就是程序画的。
-  // 变换写在 WAAPI 的【关键帧】里，不在 el.style 上：
-  // 读 style.transform 永远是空的（这里就先读错过一次，报出"0 种朝向"）。
-  const shapes = await page.evaluate(() =>
-    [...document.querySelectorAll('#wave i')].map(el => {
-      const a = el.getAnimations()[0];
-      if (!a) return null;
-      const kf = a.effect.getKeyframes().find(k => k.transform);
-      const m = kf && kf.transform.match(
-        /rotate\(([-\d.]+)deg\)\s*scale\(([-\d.]+),\s*([-\d.]+)\)/);
-      return m ? { rot: +m[1], squash: +m[3] / +m[2] } : null;
-    }).filter(Boolean));
-  const rots = new Set(shapes.map(s => s.rot.toFixed(1)));
-  const squash = shapes.map(s => s.squash);
-  console.log(`  环的形状: ${shapes.length} 个有记录，朝向 ${rots.size} 种不同，` +
-    `扁度 ${squash.length ? Math.min(...squash).toFixed(3) + '~' + Math.max(...squash).toFixed(3) : '-'}`);
-  check(shapes.length >= 2 && rots.size >= 2,
-    '每个环的朝向随机（不是一圈圈同心正圆，那样一眼就是程序画的）',
-    `${rots.size} 种朝向`);
-  check(squash.length >= 2 && Math.max(...squash) - Math.min(...squash) > .02,
-    '每个环都是略扁的、扁度各不相同（真水面上的涟漪不会是正圆）',
-    `扁度跨度 ${squash.length ? (Math.max(...squash) - Math.min(...squash)).toFixed(3) : '-'}`);
-
-  // 深水层的时长必须远长于表面涟漪 —— "慢"是它不抢戏的前提
-  const durs = await page.evaluate(() => ({
-    deep: [...document.querySelectorAll('#waveDeep i')]
-      .map(el => el.getAnimations()[0]?.effect.getTiming().duration ?? 0),
-    rip: [...document.querySelectorAll('#wave i')]
-      .map(el => el.getAnimations()[0]?.effect.getTiming().duration ?? 0).filter(Boolean),
-  }));
-  const deepRun = durs.deep.filter(Boolean);
-  console.log(`  时长: 深水 ${deepRun.map(d => (d / 1000).toFixed(1) + 's').join(',') || '（这一刻没在跑）'}` +
-    `  表面 ${durs.rip.map(d => (d / 1000).toFixed(1) + 's').join(',') || '（无）'}`);
-  if (deepRun.length && durs.rip.length) {
-    check(Math.min(...deepRun) > Math.max(...durs.rip) * 2,
-      '深水层比表面涟漪慢得多（分层的关键是节奏拉开，不是叠在一起）',
-      `${(Math.min(...deepRun) / 1000).toFixed(1)}s vs ${(Math.max(...durs.rip) / 1000).toFixed(1)}s`);
-  } else {
-    check(deepRun.length + durs.rip.length > 0, '深水层与表面层都有动画在跑',
-      `深水 ${deepRun.length} / 表面 ${durs.rip.length}`);
+  /* 颜色：用户指定 shardColor=#aeff32 / accentColor=#ccff7f，
+     底色是站里的墨黑。逐像素量出来才对得上 —— 断言里写死十六进制没用，
+     真正画上去的是着色之后的颜色。 */
+  {
+    const buf = await page.screenshot();
+    const { data, info } = await sharp(buf).raw().toBuffer({ resolveWithObject: true });
+    let lit = 0, total = 0, maxG = 0, sumR = 0, sumB = 0, hueSum = 0, hueN = 0;
+    for (let i = 0; i < data.length; i += info.channels) {
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      total++;
+      if (g > maxG) maxG = g;
+      // 只统计"发光的那部分"：绿通道明显高于红，且不是纯灰
+      if (g > 90 && g > r + 20) {
+        lit++; sumR += r; sumB += b;
+        // 色相（度）：aeff32 是 84° 左右，偏黄绿
+        const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+        if (d) {
+          let h = mx === g ? 60 * ((b - r) / d + 2) : 0;
+          hueSum += (h + 360) % 360; hueN++;
+        }
+      }
+    }
+    const pct = lit / total * 100;
+    const hue = hueN ? hueSum / hueN : 0;
+    console.log(`  箔片: 发光像素 ${pct.toFixed(2)}%  最亮绿 ${maxG}  ` +
+      `平均色相 ${hue.toFixed(0)}°（目标 aeff32 ≈ 84°）`);
+    check(pct > 1 && pct < 30, '箔片画出来了，而且是"碎屑"不是"整片"',
+      `发光像素占 ${pct.toFixed(2)}%`);
+    check(hue > 70 && hue < 100, '颜色落在指定的柠檬绿上（aeff32 / ccff7f 都是这个色相）',
+      `${hue.toFixed(0)}°`);
+    // 折痕：同一片箔上要有明暗两面，全靠画面里同时存在亮绿和暗绿
+    check(maxG > 180, '有迎光的亮面（不是整幅都压暗）', `最亮绿 ${maxG}`);
   }
 
-  // ③ 鼠标移动：沿路径留下波纹
-  await page.mouse.move(180, 740, { steps: 6 });
-  await sleep(1400);
-  const beforeMove = new Set((await rings()).map(r => r.x + ',' + r.y));
-  await page.mouse.move(1230, 320, { steps: 26 });
-  await sleep(120);
-  const afterMove = (await rings()).filter(r => r.state === 'running');
-  const fresh = afterMove.filter(r => !beforeMove.has(r.x + ',' + r.y));
-  console.log(`  扫过之后 ${afterMove.length} 圈在跑，其中 ${fresh.length} 圈是这次扫出来的`);
-  check(fresh.length >= 3, '鼠标移动会沿路径留下波纹（不是只有自动冒的那几圈）',
-    `${fresh.length} 圈新的`);
-  /* 新圈应当贴着鼠标走过的那条线。
-     只算点到线段的距离，不算"离鼠标当前位置多远" —— 尾迹本来就是留在身后的。 */
-  const d2seg = (px, py, x1, y1, x2, y2) => {
-    const dx = x2 - x1, dy = y2 - y1;
-    const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)));
-    return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
-  };
-  const onPath = fresh.filter(r => d2seg(r.x, r.y, 180, 740, 1230, 320) < 120).length;
-  check(onPath >= Math.min(3, fresh.length), '新波纹落在鼠标走过的那条线上（尾迹）',
-    `${onPath}/${fresh.length} 圈贴线`);
+  /* 滚过一屏之后必须停：每帧重绘的 canvas 不停就是白烧电。
+     这条原来查的是波纹元素，换成箔片之后选择器匹配不到任何东西，
+     于是"0 个在跑"永远成立 —— 空过的检查比没有检查更糟。 */
+  await page.evaluate(() => window.scrollTo({ top: innerHeight * 2, behavior: 'instant' }));
+  await sleep(700);
+  const stoppedShards = await shardState();
+  check(stoppedShards && !stoppedShards.api.running,
+    '滚过一屏后箔片循环自己停了（不是一直在后台空转）',
+    stoppedShards && stoppedShards.api ? `running=${stoppedShards.api.running}` : '');
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
+  await sleep(900);
+
 
   /* --- 循环必须自己停：这是性能承诺，不是观感问题 --- */
   await sleep(4200);
   const stopped = await page.evaluate(() => window.__welcomeFx());
   check(!stopped.running, '鼠标停住几秒后逐字的 rAF 循环自己停了（不留空转）',
     `running=${stopped.running} 字=${stopped.chars.map(v => v.toFixed(3)).join(',')}`);
-  // 水波纹不靠 rAF，但停手之后也不该越积越多。
-  // 上限不是"越少越好"：表面涟漪的时长是 2.2~3.4s、每 0.5~1.2s 冒一个，
-  // 稳态下同时有四五圈本来就正常 —— 层叠出来的干涉才是水面的样子。
-  // 这里卡的是"不会无限堆积"（池子就 16 个），不是"必须只有一两圈"。
-  check(stopped.rings <= 8, '鼠标停住时水波纹不会被堆起来（池子有上限、跑完就收）',
-    `在跑的 ${stopped.rings} 圈（池子 16）`);
+  // 背景箔片是【另一个】循环，它本来就该一直跑（那是环境动画），
+  // 所以这里只确认它还活着 —— 它该停的时机是"滚过一屏"，下面单独验。
+  const shardAlive = await page.evaluate(() => window.__shards ? window.__shards() : null);
+  check(shardAlive && shardAlive.running, '背景箔片在首屏停留期间持续在跑（环境动画本来就该一直动）',
+    shardAlive ? `running=${shardAlive.running} ${shardAlive.count} 片` : '没有调试钩子');
 
   /* --- 滚过一屏之后要整体复位 --- */
   await page.evaluate(() => window.scrollTo(0, innerHeight * 2));
@@ -684,17 +497,13 @@ if (fxReady) {
   check(!afterScroll.running && afterScroll.chars.every(v => v === 1),
     '滚过欢迎页后循环停掉、字也复位了（不会留着放大态飘在那儿）',
     `running=${afterScroll.running}`);
-  /* 波纹也要一起停：欢迎页这时只是 visibility:hidden，
-     不停的话它会一直往一个看不见的层里画，白烧 GPU。 */
-  await sleep(2200);
-  const waveAfter = await page.evaluate(() => ({
-    rings: window.__welcomeFx().rings,
-    visible: [...document.querySelectorAll('#wave i')]
-      .filter(el => +getComputedStyle(el).opacity > .01).length,
-  }));
-  check(waveAfter.rings === 0 && waveAfter.visible === 0,
-    '滚过欢迎页后不再生成新波纹，残留的也都收干净了',
-    `活跃 ${waveAfter.rings} 圈 / 仍可见 ${waveAfter.visible} 圈`);
+  /* 箔片也要一起停：欢迎页这时只是 visibility:hidden，
+     一个每帧重绘的 canvas 不停就是一直在后台白烧电。 */
+  await sleep(900);
+  const shardAfter = await page.evaluate(() => window.__shards ? window.__shards() : null);
+  check(shardAfter && !shardAfter.running,
+    '滚过欢迎页后箔片循环停掉（每帧重绘的 canvas 不能在看不见的地方空转）',
+    shardAfter ? `running=${shardAfter.running}` : '没有调试钩子');
   await page.evaluate(() => window.scrollTo(0, 0));
   await sleep(900);
 

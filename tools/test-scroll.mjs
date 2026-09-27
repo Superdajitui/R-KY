@@ -604,26 +604,32 @@ check(rm.bad.length === 0, '关闭动效时没有元素被藏在透明里',
 check(rm.lines === 0, '关闭动效时标题不再被裁切', `${rm.lines} 行仍偏移`);
 check(rm.bars === 0, '关闭动效时进度条直接显示为满', `${rm.bars} 条仍收起`);
 
-/* "减少动态效果"下，欢迎页那两个效果（逐字弹起 + 水波纹）必须【完全不启动】。
-   不只是"看不见"：逐字那条要拆 DOM，水波纹那条会一直往一个满屏图层里画圈，
+/* "减少动态效果"下，欢迎页那两样东西（逐字弹起 + 背景箔片）必须【完全不启动】。
+   不只是"看不见"：逐字那条要拆 DOM，箔片那条会一直往一个满屏画布上重绘，
    在明确要求减少动效的机器上跑这些，本身就是错的。
-   验的是"有没有真的在动"：拆字发生没有、有没有动画在跑。 */
+   验的是"有没有真的在动"：拆字发生没有、画布循环有没有跑起来。
+
+   ⚠ 这里原来查的是波纹元素（#wave i）。换成箔片之后那个选择器匹配不到任何东西，
+   "0 个在跑"于是永远成立 —— 检查绿着，其实什么都没验。
+   空过的检查比没有检查更糟，所以改成直接问渲染器的调试钩子。 */
 const rmFx = await rp.evaluate(() => ({
   hooked: typeof window.__welcomeFx === 'function',
   chars: document.querySelectorAll('.welcome__ch').length,
   split: document.querySelectorAll('.welcome__line > span.is-split').length,
-  rings: [...document.querySelectorAll('#wave i, #waveDeep i')]
-    .filter(el => el.getAnimations().length).length,
-  waveInk: [...document.querySelectorAll('#wave i, #waveDeep i')]
-    .filter(el => +getComputedStyle(el).opacity > .01).length,
+  shards: typeof window.__shards === 'function',
+  shardOpacity: (() => {
+    const c = document.querySelector('#shards');
+    return c ? getComputedStyle(c).opacity : '（没有画布）';
+  })(),
   strokeOnLine: getComputedStyle(document.querySelector('.welcome__line--outline > span'))
     .webkitTextStrokeWidth,
 }));
 check(!rmFx.hooked && rmFx.chars === 0 && rmFx.split === 0,
   '关闭动效时不启动逐字效果（DOM 都没拆）',
   `hook=${rmFx.hooked} 拆了 ${rmFx.chars} 个字`);
-check(rmFx.rings === 0 && rmFx.waveInk === 0, '关闭动效时水波纹一圈都不跑',
-  `在跑的 ${rmFx.rings} 个 / 可见的 ${rmFx.waveInk} 个`);
+check(!rmFx.shards && rmFx.shardOpacity === '0',
+  '关闭动效时背景箔片不启动（画布停在透明的第一帧）',
+  `挂钩=${rmFx.shards} 画布 opacity=${rmFx.shardOpacity}`);
 // 不拆字的时候，描边必须仍然画在整行上 —— 拆与不拆是两条路，两条都得对
 check(rmFx.strokeOnLine && rmFx.strokeOnLine !== '0px',
   '关闭动效时镂空描边仍然画在整行上（没拆字这条路也是好的）', rmFx.strokeOnLine);
@@ -699,7 +705,8 @@ check(mob.bad.length === 0, '手机上滚到底也没有内容被藏住',
    两道闸门是分开的 ——
    散开只是十个字的 transform + opacity，纯合成器操作，手机跑得起，
    而且那是第一屏唯一的"编排时刻"，手机上缺了它整段体验就少一截；
-   水面是一池子几百像素的图层，那个才是不该给手机的。
+   背景箔片是一个每帧重绘的 canvas，那个才是不该先给手机的
+   （第 12 节里的数量分档留了手机这一路，但默认先关掉，等实测过再开）。
    悬停单独关掉：触屏根本没有 hover。 */
 await mp.mouse.move(200, 420);           // 真发一次指针移动，验证监听确实没挂
 await sleep(300);
@@ -718,14 +725,36 @@ const mobFx = await mp.evaluate(() => {
     strokeColor: cs.webkitTextStrokeColor,
     fill: after.content,
     inside: window.__welcomeFx ? window.__welcomeFx().inside : null,
-    rings: [...document.querySelectorAll('#wave i, #waveDeep i')]
-      .filter(el => el.getAnimations().length).length,
+    // 同样不能查波纹元素（那个选择器现在匹配不到东西，会空过）
+    shards: typeof window.__shards === 'function',
+    shardOpacity: (() => {
+      const c = document.querySelector('#shards');
+      return c ? getComputedStyle(c).opacity : '（没有画布）';
+    })(),
   };
 });
 check(mobFx.hooked && mobFx.chars === 10,
   '手机上照样拆字（散开这个时刻手机上同样该有）', `${mobFx.chars} 个字`);
-check(mobFx.rings === 0, '手机上一圈水波纹都不跑（一池子大图层，不该给手机）',
-  `在跑的 ${mobFx.rings} 个`);
+/* 手机上箔片是【开着】的（200 片 / dpr 1.5）。
+   决定开之前实测过：390×844 上帧间隔平均 16.7ms、p95 16.8ms，稳 60fps
+   （tools/probe-shards.mjs 里那一段）。"留了档"不等于"跑得动"，
+   所以这里顺便把帧间隔也钉住 —— 谁把手机那一档的数量调大十倍，这条会响。 */
+check(mobFx.shards && mobFx.shardOpacity === '1',
+  '手机上背景箔片在跑（实测稳 60fps 才开的）',
+  `挂钩=${mobFx.shards} 画布 opacity=${mobFx.shardOpacity}`);
+const mobPerf = await mp.evaluate(() => new Promise(res => {
+  const ts = [];
+  let last = 0;
+  const tick = t => {
+    if (last) ts.push(t - last);
+    last = t;
+    if (ts.length < 90) requestAnimationFrame(tick);
+    else { ts.sort((a, b) => a - b); res(+ts[Math.floor(ts.length * .95)].toFixed(1)); }
+  };
+  requestAnimationFrame(tick);
+}));
+check(mobPerf < 25, '手机上加箔片之后帧间隔仍然够用（p95 < 25ms）',
+  `p95 ${mobPerf}ms`);
 check(mobFx.inside === false, '手机上不挂悬停（触屏没有 hover，挂了只会把手指位置当悬停）',
   `inside=${mobFx.inside}`);
 check(mobFx.stroke !== '0px' && mobFx.fill !== 'none',

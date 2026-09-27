@@ -654,19 +654,17 @@
      卡过一次，那还只是静态的。这里的环把剖面烘进渐变，
      全程只有 transform + opacity，合成器就能完成。
      --------------------------------------------------------- */
-  const wave    = $('#wave');
-  const waveDeep = $('#waveDeep');
+  const shardCv = $('#shards');
   const titleEl = $('.welcome__title');
   const bodyEl  = $('.welcome__body');
 
-  /* 两道闸门分开了，不再是一个笼统的 !isTouch：
+  /* 两道闸门分开：
      · 逐字（散开 + 悬停）—— 散开只是十个字的 transform + opacity，纯合成器操作，
        手机上完全跑得起；被挡住的只有【悬停】那部分，因为触屏根本没有 hover。
-       （原来整块都被 !isTouch 关掉，手机上第一屏就完全没有这个时刻了。）
-     · 水面 —— 一池子几百像素的图层，手机不启用。 */
-  const canChars = !!(welcome && wave && waveDeep && titleEl && bodyEl && !reduce);
+     · 背景箔片 —— 一个每帧重绘的 canvas，属于"按设备给量"的东西：
+       数量在第 12 节里按设备分档，并且会按实测帧时自动降级。 */
+  const canChars = !!(welcome && shardCv && titleEl && bodyEl && !reduce);
   const canPointer = !isTouch;
-  const canWave = !isTouch;
 
   if (canChars) {
     /* ── 拆字 ──
@@ -735,155 +733,6 @@
       if (chars[0]) radius = Math.max(120, chars[0].el.offsetHeight * 2.1);
     }
 
-    /* ══════════ 水面：深水层 + 表面涟漪 ══════════
-       由 Web Animations 驱动：JS 只在"该冒一个波纹"的时候跑一次，
-       扩散和淡出全交给合成器。这里【没有】常驻的 rAF 循环 ——
-       波纹是一圈圈各自独立的短动画，不是每帧重算的状态。
-
-       池子复用而不是每次新建元素：新建会带来 GC 抖动，
-       而且元素数量没有上限的话，鼠标甩一下就能刷出上百个图层。 */
-    const pool = $$('i', wave);
-    const deepPool = $$('i', waveDeep);
-    const isRunning = el => el.__a && el.__a.playState === 'running';
-    const aliveCount = () => pool.reduce((n, el) => n + (isRunning(el) ? 1 : 0), 0);
-
-    /* 挑一个可以用的环。
-       池子满了【不能把新的丢掉】—— 实测踩到过：
-       鼠标快速扫过时，正在跑的恰好是自动冒出来的那几圈，
-       被丢掉的却正是尾迹，扫完一看路径上只有稀稀拉拉三圈。
-       改成复用"最接近散尽"的那一圈（它的透明度已经很低，掐掉看不出来）。 */
-    function pick(from) {
-      let best = null, bestP = -1;
-      for (const el of from) {
-        if (!isRunning(el)) return el;                     // 有空位就直接用
-        const p = el.__a.effect.getComputedTiming().progress ?? 1;
-        if (p > bestP) { bestP = p; best = el; }
-      }
-      return best;
-    }
-
-    /* 起一圈波纹。
-       rot / squash 是给"高级感"加的：完美正圆一眼就是程序画的。
-       真实水面上的涟漪永远是略扁的、朝向随机的，
-       所以每个环都带一个随机旋转 + 一点椭圆度 —— 叠在一起就没有"同心圆阵列"的机械感。 */
-    function ring(x, y, dur, grow, peak, ease) {
-      const el = pick(pool);
-      if (!el) return;
-      if (el.__a) { el.__a.cancel(); el.__a = null; }
-      const rot = (Math.random() * 360).toFixed(1);
-      const squash = (.9 + Math.random() * .17).toFixed(3);   // 0.90~1.07
-      const at = s => ({ transform: 'translate3d(' + x.toFixed(1) + 'px,' +
-        y.toFixed(1) + 'px,0) rotate(' + rot + 'deg)' +
-        ' scale(' + s.toFixed(3) + ',' + (s * squash).toFixed(3) + ')' });
-      /* 三个关键帧：几乎从零开始 → 快速铺开一点并达到最亮 → 铺到最大、淡尽。
-         中段放在 16%：真实的水波是"先猛地弹开、之后慢慢失去能量"，
-         峰值放太靠后会显得迟钝。 */
-      const a = el.animate([
-        Object.assign(at(grow * .07), { opacity: 0 }),
-        Object.assign(at(grow * .38), { opacity: peak, offset: .16 }),
-        Object.assign(at(grow), { opacity: 0 }),
-      ], { duration: dur, easing: ease || 'cubic-bezier(.16,.6,.28,1)', fill: 'forwards' });
-      el.__a = a;
-      /* 跑完立刻 cancel：效果撤掉后元素回到 CSS 的 opacity:0，
-         终点本来就是 0，所以看不出任何跳变 ——
-         但这样就【不会留着一条 fill:forwards 的动画】继续参与合成。
-         不 cancel 的话，一次浏览下来会攒下几百条已完成动画。 */
-      a.onfinish = () => { a.cancel(); if (el.__a === a) el.__a = null; };
-    }
-
-    /* ── 深水层：极慢、极大、极淡的暗涌 ──
-       它自己成一个节奏，跟鼠标没有任何关系。
-       它存在的唯一意义是让表面涟漪"有底" ——
-       少了它，那些圈就是浮在纯色上的贴纸。 */
-    let deepT = 0;
-    function scheduleDeep(delay) {
-      clearTimeout(deepT);
-      deepT = setTimeout(() => {
-        if (!live()) { deepT = 0; return; }
-        const el = pick(deepPool);
-        if (el) {
-          if (el.__a) { el.__a.cancel(); el.__a = null; }
-          const x = innerWidth * (.12 + Math.random() * .76);
-          const y = innerHeight * (.12 + Math.random() * .76);
-          const grow = 1.35 + Math.random() * .75;          // 铺到 1200~1900px
-          const at = s => ({ transform: 'translate3d(' + x.toFixed(0) + 'px,' +
-            y.toFixed(0) + 'px,0) scale(' + s.toFixed(3) + ')' });
-          const a = el.animate([
-            Object.assign(at(grow * .34), { opacity: 0 }),
-            // 峰值给到 .75：深水层的渐变本身极淡（最重才 .11 白），
-            // 乘下来正好是一层几乎察觉不到的涌动
-            Object.assign(at(grow * .62), { opacity: .75, offset: .42 }),
-            Object.assign(at(grow), { opacity: 0 }),
-          /* 时长 7~12s：必须稳稳慢过表面层的两倍。
-             一开始写的是 6.2~11s，线上就卡在 6.3s vs 表面 3.2s —— 差 2 倍的门槛擦边没过。
-             "分层"的关键是两层节奏拉得足够开，余量不够就等于没分开，所以这里留足。 */
-          ], { duration: 7000 + Math.random() * 5000,
-            easing: 'cubic-bezier(.3,.5,.4,1)', fill: 'forwards' });
-          el.__a = a;
-          a.onfinish = () => { a.cancel(); if (el.__a === a) el.__a = null; };
-        }
-        scheduleDeep();
-      }, delay || (2600 + Math.random() * 3400));
-    }
-
-    /* ── 鼠标不动时自己冒：像雨点落在水面上 ──
-       位置、间隔、大小、时长全都随机 —— 全都一样就成了节拍器。 */
-    let idleT = 0;
-    let lastTrail = -1e9;
-    function scheduleIdle(delay) {
-      clearTimeout(idleT);
-      idleT = setTimeout(() => {
-        if (!live()) { idleT = 0; return; }            // 停掉，滚回来时由 scroll 重新点火
-        /* 鼠标正在滑动就跳过这一拍：此刻池子应该留给尾迹用。
-           不然自动冒的那几圈会跟尾迹抢位置，扫描出来的路径是断的。 */
-        if (performance.now() - lastTrail < 700) { scheduleIdle(320); return; }
-        // 视口里随机一点，四边留余量，免得波纹还没铺开就被裁掉
-        const x = innerWidth * (.06 + Math.random() * .88);
-        const y = innerHeight * (.08 + Math.random() * .84);
-        /* 大小和浓淡的跨度都刻意拉开（铺到 ⌀250~590，浓淡 .42~.88）。
-           全都差不多重的话，画面是一层平均的噪，没有主次。
-           下限量抬过一次：原来 .28 起步，再乘渐变的 .90 之后仍然很淡，
-           用户反馈"鼠标静止时的随机波纹太不明显"。 */
-        ring(x, y, 2200 + Math.random() * 1000, .45 + Math.random() * .6,
-          .42 + Math.random() * .46);
-        // 偶尔再来一滴挨着的，像先后落下的两个雨点
-        if (Math.random() < .34) {
-          setTimeout(() => {
-            if (!live()) return;
-            ring(x + (Math.random() - .5) * 190, y + (Math.random() - .5) * 150,
-              2000 + Math.random() * 900, .40 + Math.random() * .5,
-              .36 + Math.random() * .4);
-          }, 160 + Math.random() * 280);
-        }
-        scheduleIdle();
-      }, delay || (480 + Math.random() * 620));
-    }
-
-    /* ── 鼠标移动：沿着路径留下波纹往外晕开 ──
-       按【走过的距离】触发，不按时间 —— 手停着不动不该冒波纹，
-       甩得快就该一路留下更多。 */
-    const STEP = 62;
-    let last = null;
-    function trail(x, y) {
-      lastTrail = performance.now();
-      if (!last) { last = { x, y }; return; }
-      // 隔了很久没动（切窗口回来之类）就直接接管，不补一串横穿屏幕的波纹
-      if (Math.hypot(x - last.x, y - last.y) > 900) { last = { x, y }; return; }
-      let guard = 0;
-      let d = Math.hypot(x - last.x, y - last.y);
-      while (d >= STEP && guard++ < 4) {
-        const k = STEP / d;
-        const px = last.x + (x - last.x) * k;
-        const py = last.y + (y - last.y) * k;
-        ring(px, py, 1500 + Math.random() * 700, .62 + Math.random() * .4,
-          // 尾迹比自动冒的淡一档：它是一串叠在一起的，同样的浓度会糊成一片
-          .30 + Math.random() * .2,
-          // 尾迹用一条更"冲"的缓动：它是被手指划出来的，前段该更急
-          'cubic-bezier(.12,.55,.25,1)');
-        last = { x: px, y: py };
-        d = Math.hypot(x - last.x, y - last.y);
-      }
-    }
 
     /* ══════════ 标题逐字：这一部分仍然需要 rAF ══════════
        弹簧是每帧积分出来的，没法交给合成器。但它只在鼠标悬停时跑，
@@ -910,8 +759,6 @@
         if (c.tf !== '') { c.el.style.transform = ''; c.el.style.opacity = ''; c.tf = ''; }
       }
       scat = 1;                 // 已经滚过欢迎页，进度就停在"完全散开"
-      for (const el of pool) { if (el.__a) { el.__a.cancel(); el.__a = null; } }
-      for (const el of deepPool) { if (el.__a) { el.__a.cancel(); el.__a = null; } }
       mouse.has = false; inside = false;
     }
 
@@ -1006,14 +853,12 @@
       welcome.addEventListener('pointerenter', (e) => {
         inside = true;
         mouse.x = e.clientX; mouse.y = e.clientY; mouse.has = true;
-        last = { x: e.clientX, y: e.clientY };   // 别从上次离开的地方补一串
         kick();
       }, { passive: true });
 
       welcome.addEventListener('pointermove', (e) => {
         mouse.has = true; inside = true;
         mouse.x = e.clientX; mouse.y = e.clientY;
-        if (canWave) trail(e.clientX, e.clientY);
         kick();
       }, { passive: true });
 
@@ -1023,21 +868,14 @@
     /* 滚过一屏之后要复位 —— 这件事不能只挂在 frame 里的那道闸上：
        循环很可能早就自己停了，停了就没人再进 frame，复位也就永远不会发生，
        放大态会一直留在 DOM 上（欢迎页已经 visibility:hidden，看不见，
-       但滚回来就会看到几个字还是大的）。
-       水波纹的自动生成也在这里一起点火／灭火。 */
+       但滚回来就会看到几个字还是大的）。 */
     addEventListener('scroll', () => {
       if (live()) {
-        if (canWave) {
-          if (!idleT) scheduleIdle();
-          if (!deepT) scheduleDeep();
-        }
         // 滚动位置驱动逐字散开，所以滚动时也必须把循环叫醒 ——
         // 少了这一句，滚动只会停在一个已经没人更新的画面上
         kick();
       } else {
-        clearTimeout(idleT); idleT = 0;
-        clearTimeout(deepT); deepT = 0;
-        if (mouse.has || chars.some(c => c.sc !== 1) || aliveCount()) reset();
+        if (mouse.has || chars.some(c => c.sc !== 1)) reset();
         running = false;
       }
     }, { passive: true });
@@ -1050,15 +888,8 @@
     let rt = 0;
     addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(measure, 150); });
 
-    // 开场先等预加载遮罩走完（1.25s 动画 + 淡出 + 0.42s），别在遮罩背后空放波纹。
-    // 深水层更晚一点 —— 水面应该先静一下，再慢慢"活"过来。
-    if (canWave) {
-      scheduleIdle(2600);
-      scheduleDeep(3800);
-    }
-
     /* 调试钩子，和 __scrub() 一套思路：
-       让测试能直接问"循环还跑着吗、还有几圈波纹在跑"，
+       让测试能直接问"循环还跑着吗、进度到哪了"，
        而不是靠帧率或截图间接猜。 */
     window.__welcomeFx = () => ({
       running,
@@ -1066,13 +897,6 @@
       radius: Math.round(radius),
       scat: +scat.toFixed(4),
       chars: chars.map(c => +c.sc.toFixed(4)),
-      rings: aliveCount(),
-      deep: deepPool.reduce((n, el) => n + (isRunning(el) ? 1 : 0), 0),
-      ringPos: pool.filter(el => el.__a && el.__a.playState === 'running')
-        .map(el => {
-          const m = el.style.transform.match(/translate3d\(([-\d.]+)px,\s*([-\d.]+)px/);
-          return m ? [Math.round(+m[1]), Math.round(+m[2])] : null;
-        }).filter(Boolean),
     });
 
     /* 再开一个口子给测试把弹簧的阻尼调大。
@@ -1080,6 +904,289 @@
        而没有对照组，"放大是 Q 弹的"这条断言就没法证明它真的会失败，
        等于一句自我感觉良好的空话。生产路径不会碰它。 */
     window.__welcomeFx.damp = (k, c) => { CH_K = k; CH_C = c; };
+  }
+
+  /* ---------------------------------------------------------
+     12. 欢迎页背景：风中的折叠箔片（照着 reactbits 的 Aero Shards）
+     ---------------------------------------------------------
+     原版是 WebGPU 组件：vgpu 依赖、WGSL 着色器、三千多个实例，
+     外加泛光/颗粒/色散三档后处理。这个站是零依赖的静态站 ——
+     把一整套 WebGPU 管线搬进来既不现实、也不符合这个站一贯的取舍，
+     而且 WebGPU 到现在都没有广泛支持：搬进来的结果是相当一部分访客
+     只看到一片空白。所以这里用 Canvas 2D 复刻它的【观感】。
+
+     复刻的核心是【折过的四边形】：
+       · 六个顶点、两个三角面，中间的折痕（z 从 0 抬到 0.34）让两个面的
+         法线朝向不同 —— 同一片箔上于是有了明暗两面。这是整个效果的命根子，
+         没有折痕就只是几百块飘着的色块。
+       · 每帧把六个顶点做三维旋转、再透视投影，按各自法线与光线的夹角着色：
+         背光压暗、迎光推向亮色，正对光的才吃高光。
+       · 三百多片沿一条风道流动，各自带横向车道偏移和深度（远的更小更暗）。
+
+     性能帐：每片的数学只有几十次浮点，瓶颈在 Canvas 的填充次数上
+     （每片两个三角形）。所以数量按设备分档，并且会按【实测帧时】自动降级 ——
+     这和原版的运行时降级是同一个思路，只是它的档位在 GPU 侧。
+     --------------------------------------------------------- */
+  if (shardCv && !reduce) {
+    const g2 = shardCv.getContext('2d', { alpha: true });
+    if (g2) {
+      /* 用户指定的两个颜色（reactbits 那个链接里的 shardColor / accentColor）。
+         底色用站里的墨黑，和原版默认的 rgb(18,15,23) 是同一档暗度。 */
+      const BASE = [0xae, 0xff, 0x32];
+      const HI = [0xcc, 0xff, 0x7f];
+      // 光从左上来，和页面里其它高光的方向一致
+      const LIGHT = (() => {
+        const v = [-0.38, 0.58, 1];
+        const m = Math.hypot(...v);
+        return v.map(n => n / m);
+      })();
+
+      /* 一片箔的局部几何：一条竖脊，两侧各折下去。
+         脊上的 z 抬起来（0.34），两侧尖端落到 0 —— 折痕就是这么来的。 */
+      const GEO = [
+        [0, 1, .34], [-.72, 0, 0], [0, -1, .34],
+        [0, 1, .34], [0, -1, .34], [.72, 0, 0],
+      ];
+
+      // 按设备给数量：手机少、桌面多。DPR 也夹住，不然高倍屏上填充量翻几倍。
+      const isSmall = innerWidth < 820;
+      const PRESET = isSmall
+        ? { count: 200, dpr: 1.5 }
+        : { count: 520, dpr: 2 };
+      const DPR = Math.min(devicePixelRatio || 1, PRESET.dpr);
+
+      let W = 0, H = 0, unit = 1, aspect = 1;
+      const size = () => {
+        W = Math.max(1, Math.round(innerWidth * DPR));
+        H = Math.max(1, Math.round(innerHeight * DPR));
+        shardCv.width = W; shardCv.height = H;
+        // 世界坐标 y ∈ [-1,1] 铺满画面高度，x 按宽高比展开
+        unit = H / 2;
+        aspect = innerWidth / Math.max(innerHeight, 1);
+      };
+      size();
+
+      /* 风道：从左到右横穿，带一点上下起伏和前后进深。
+         片子在 t=0 和 t=1 两端进出画面，所以看不出接缝。 */
+      const pathAt = (t, out) => {
+        const w = t * 2 - 1;
+        out[0] = w * aspect * 1.18;
+        out[1] = Math.sin((t * 1.72 - .2) * Math.PI) * .54 + Math.sin(t * Math.PI * 3) * .12;
+        out[2] = Math.cos((t * 2 - .7) * Math.PI) * .22;
+        return out;
+      };
+
+      const shards = [];
+      for (let i = 0; i < PRESET.count; i++) {
+        shards.push({
+          phase: Math.random(),
+          // 横向车道：负几次方让分布中间密、两边疏，和原版的 pow(...,0.72) 一个意思
+          lane: Math.sign(Math.random() * 2 - 1) * Math.pow(Math.abs(Math.random() * 2 - 1), .72),
+          depth: Math.random() * 2 - 1,
+          size: .55 + Math.random() * .95,
+          tumble: Math.random() * Math.PI * 2,
+          // 翻滚速度分正负：全同向会像一整片在转，不像各自翻飞
+          tumbleV: (Math.random() * 2 - 1) * 1.5,
+          bright: .82 + Math.random() * .48,
+        });
+      }
+
+      const pointer = { x: -9, y: -9, px: -9, py: -9, power: 0, active: false };
+      // 点击推出的涟漪：年龄越大半径越大、越弱
+      const ripples = [];
+
+      const p0 = [0, 0, 0], p1 = [0, 0, 0];
+      const f = [0, 0, 0], u = [0, 0, 0], v = [0, 0, 0];
+      const pt = [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]];
+      const wv = [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]];
+
+      let travel = 0;
+      let last = 0, raf = 0;
+      let slow = 0, level = 0;          // 帧时连续偏高就降级
+      const COUNT_STEPS = [1, .72, .5];
+
+      const shardLive = () => window.scrollY < innerHeight * .98 && !document.hidden;
+
+      function render(now) {
+        raf = 0;
+        if (!shardLive()) return;
+        const dt = last ? Math.min(.05, (now - last) / 1000) : 1 / 60;
+        last = now;
+        const t0 = performance.now();
+
+        travel = (travel + dt * .028) % 1;
+        for (const r of ripples) r.age += dt;
+        while (ripples.length && ripples[0].age > 1.6) ripples.shift();
+
+        // 指针：平滑跟随，松手后力度衰减
+        pointer.px += (pointer.x - pointer.px) * Math.min(1, dt * 9);
+        pointer.py += (pointer.y - pointer.py) * Math.min(1, dt * 9);
+        pointer.power += ((pointer.active ? 1 : 0) - pointer.power) * Math.min(1, dt * 6);
+
+        g2.setTransform(1, 0, 0, 1, 0, 0);
+        g2.clearRect(0, 0, W, H);
+
+        const n = Math.round(shards.length * COUNT_STEPS[level]);
+        const pointerActive = pointer.power > .02;
+
+        for (let i = 0; i < n; i++) {
+          const s = shards[i];
+          const t = (s.phase + travel) % 1;
+          pathAt(t, p0);
+          // 切线用差分算 —— 解析求导没必要，差分的误差在这个尺度上看不出来
+          pathAt((t + .002) % 1, p1);
+          f[0] = p1[0] - p0[0]; f[1] = p1[1] - p0[1]; f[2] = p1[2] - p0[2];
+          let m = Math.hypot(f[0], f[1], f[2]) || 1;
+          f[0] /= m; f[1] /= m; f[2] /= m;
+
+          /* 车道偏移：横向铺开。
+             宽度包络【不能收到 0】—— 第一版用 (1-|2t-1|)^.5，
+             两端归零，于是所有片子在进出口都挤在同一条线上，
+             整片看起来只是中间一条带在动，画面上下都是空的。
+             现在两端也留 0.5，整幅铺满，中段最宽。 */
+          const w = .5 + .5 * (1 - Math.abs(t * 2 - 1)) ** .55;
+          const lane = s.lane * 1.15 * w;
+          let wx = p0[0] - f[1] * lane;
+          let wy = p0[1] + f[0] * lane + s.depth * .12;
+          let wz = p0[2] + s.depth * .3;
+
+          // 指针排开：法向推走，越近越强
+          const cxp = pointer.px * DPR, cyp = pointer.py * DPR;
+          const sx0 = W / 2 + wx * aspect * unit * .5;
+          const sy0 = H / 2 - wy * unit * .5;
+          if (pointerActive) {
+            const dx = (sx0 - cxp) / (150 * DPR), dy = (sy0 - cyp) / (150 * DPR);
+            const d2 = dx * dx + dy * dy;
+            if (d2 < 1) {
+              const push = (1 - d2) * pointer.power * .34;
+              const dl = Math.hypot(dx, dy) || 1;
+              wx += (dx / dl) * push; wy -= (dy / dl) * push;
+            }
+          }
+          // 点击涟漪：一圈向外扩张的推力
+          for (const r of ripples) {
+            const rx = (sx0 - r.x * DPR) / (260 * DPR), ry = (sy0 - r.y * DPR) / (260 * DPR);
+            const d = Math.hypot(rx, ry);
+            const ring = Math.exp(-((d - r.age * 1.9) ** 2) / .012) * (1 - r.age / 1.6);
+            if (ring > .02) {
+              const dl = d || 1;
+              wx += (rx / dl) * ring * .3;
+              wy -= (ry / dl) * ring * .3;
+            }
+          }
+
+          // 正交基：f 是流向，u/v 是横截面上的两个方向
+          const ul = Math.hypot(f[1], f[0]) || 1;
+          u[0] = -f[1] / ul; u[1] = f[0] / ul; u[2] = 0;
+          v[0] = -f[2] * u[1]; v[1] = f[2] * u[0]; v[2] = ul;
+
+          // 绕流向翻滚
+          const a = s.tumble + now * .001 * s.tumbleV;
+          const ca = Math.cos(a), sa = Math.sin(a);
+          const ux = u[0] * ca + v[0] * sa, uy = u[1] * ca + v[1] * sa, uz = u[2] * ca + v[2] * sa;
+          const vx = v[0] * ca - u[0] * sa, vy = v[1] * ca - u[1] * sa, vz = v[2] * ca - u[2] * sa;
+
+          // 世界尺寸：近（wz 小）大、远小
+          const persp = 1 / Math.max(.62, 1 - wz * .34);
+          const sc = s.size * .034 * persp;
+          /* sz 比 sx/sy 大：折痕要折得够深，两个面的法线才拉得开，
+             同一片箔上才有明显的明暗两面。第一版 sz 和 sy 一样大，
+             折角只有 19°，大半箔片看起来就是一块平的色片。 */
+          const sx = sc * 1.35, sy = sc * .78, sz = sc * 1.5;
+
+          for (let k = 0; k < 6; k++) {
+            const G = GEO[k];
+            const lx = G[0] * sx, ly = G[1] * sy, lz = G[2] * sz;
+            const X = wx + f[0] * lx + ux * ly + vx * lz;
+            const Y = wy + f[1] * lx + uy * ly + vy * lz;
+            const Z = wz + f[2] * lx + uz * ly + vz * lz;
+            const pp = 1 / Math.max(.62, 1 - Z * .34);
+            // 世界 → 屏幕：y 轴翻转（世界向上 = 屏幕向上）
+            wv[k][0] = (W / 2 + X * aspect * unit * .5 * pp);
+            wv[k][1] = (H / 2 - Y * unit * .5 * pp);
+            wv[k][2] = Z;
+          }
+
+          for (let tri = 0; tri < 2; tri++) {
+            const a0 = wv[tri * 3], b0 = wv[tri * 3 + 1], c0 = wv[tri * 3 + 2];
+            // 面法线（屏幕空间够用：这里的透视很弱，差不出可见的偏差）
+            const e1x = b0[0] - a0[0], e1y = b0[1] - a0[1];
+            const e2x = c0[0] - a0[0], e2y = c0[1] - a0[1];
+            const nz = e1x * e2y - e1y * e2x;
+            if (nz === 0) continue;
+            // 屏幕 y 向下，法线的 z 分量取反才和世界一致
+            const nl = Math.hypot(e1x, e1y, nz) || 1;
+            const nX = -e1y / nl, nY = -nz / nl, nZ = e2x / nl;
+            const lit = Math.max(0, nX * LIGHT[0] + nY * LIGHT[1] + nZ * LIGHT[2]);
+
+            /* 环境光下限给到 .34：第一版是 .16，结果大半箔片掉进近黑，
+               整幅读起来是"暗绿的碎屑"，而不是参考那种【发光的箔】。
+               高光用 lit² 而不是 lit⁴：四次方太窄，只有正对光的那几片才吃得到，
+               中等受光的面全落在中间调上，画面就灰了。 */
+            const shade = (.34 + .66 * lit) * s.bright;
+            const hi = lit * lit;
+            const r = BASE[0] * shade * (1 - hi) + HI[0] * shade * hi;
+            const gg = BASE[1] * shade * (1 - hi) + HI[1] * shade * hi;
+            const bb = BASE[2] * shade * (1 - hi) + HI[2] * shade * hi;
+            g2.fillStyle = 'rgb(' + (r | 0) + ',' + (gg | 0) + ',' + (bb | 0) + ')';
+            g2.beginPath();
+            g2.moveTo(a0[0], a0[1]);
+            g2.lineTo(b0[0], b0[1]);
+            g2.lineTo(c0[0], c0[1]);
+            g2.closePath();
+            g2.fill();
+          }
+        }
+
+        raf = requestAnimationFrame(render);
+
+        /* 帧时监控必须在【画完之后】量，量的必须是这一段画了多久。
+           第一版写成 performance.now() - now（now 是 rAF 的时间戳），
+           量到的是"回调什么时候开始"，跟渲染开销没关系 ——
+           于是自动降级永远不会触发，慢机器上只会一直掉帧。 */
+        const cost = performance.now() - t0;
+        slow = cost > 9 ? slow + 1 : Math.max(0, slow - 2);
+        if (slow > 20 && level < COUNT_STEPS.length - 1) { level++; slow = 0; }
+      }
+
+      const wake = () => { if (!raf && shardLive()) { last = 0; raf = requestAnimationFrame(render); } };
+
+      addEventListener('resize', () => {
+        size();
+        for (const s of shards) s.phase = Math.random();   // 换尺寸时重新布一次，避免挤成一团
+        wake();
+      }, { passive: true });
+      addEventListener('scroll', () => { wake(); }, { passive: true });
+      document.addEventListener('visibilitychange', () => { wake(); });
+
+      if (canPointer) {
+        addEventListener('pointermove', (e) => {
+          pointer.x = e.clientX; pointer.y = e.clientY; pointer.active = true;
+        }, { passive: true });
+        addEventListener('pointerleave', () => { pointer.active = false; }, { passive: true });
+        // 点击推一圈涟漪。欢迎页本身点了会往下滚，所以这圈涟漪是"顺手给一下"
+        addEventListener('pointerdown', (e) => {
+          if (e.target instanceof Element && e.target.closest('a, button')) return;
+          ripples.push({ x: e.clientX, y: e.clientY, age: 0 });
+        }, { passive: true });
+      }
+
+      /* 第一帧画完再淡入，避免开场先闪一下空画布。
+         先画一帧再挂牌，所以这里手动调一次。 */
+      last = 0;
+      raf = requestAnimationFrame((t) => {
+        render(t);
+        shardCv.classList.add('is-ready');
+      });
+
+      window.__shards = () => ({
+        running: !!raf,
+        count: Math.round(shards.length * COUNT_STEPS[level]),
+        level,
+        travel: +travel.toFixed(4),
+        ripples: ripples.length,
+      });
+    }
   }
 
   /* ---------------------------------------------------------

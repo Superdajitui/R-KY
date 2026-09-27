@@ -392,7 +392,12 @@ em{font-style:normal}
    ============================================================ */
 .welcome{
   position:fixed;inset:0;z-index:1;
-  background:var(--neon);color:var(--ink);
+  /* 底色从霓虹翻成墨黑 —— 这一步是被效果本身逼出来的，不是审美选择：
+     Aero Shards 的默认背景是 rgb(18,15,23)，碎片是【发光】的。
+     柠檬绿的碎片放在霓虹底上等于隐形（aeff32 和 d2ff00 几乎同色），
+     要有那个效果就必须有暗的地方衬它。
+     于是这一页和下面的首屏变成同一套暗底 + 霓虹，反而更连贯。 */
+  background:var(--ink);color:var(--paper);
   display:flex;flex-direction:column;
   padding:clamp(1.5rem,3.5vw,2.6rem) var(--pad);
   overflow:hidden;
@@ -406,103 +411,29 @@ em{font-style:normal}
   position:absolute;inset:0;display:grid;grid-template-columns:repeat(4,1fr);
   pointer-events:none;
 }
-.welcome__grid i{border-right:1px solid rgba(17,17,18,.08)}
+/* 网格线跟着底色一起翻：原来是给亮底用的黑线，现在要浅色 */
+.welcome__grid i{border-right:1px solid rgba(244,244,242,.07)}
 .welcome__grid i:last-child{border-right:0}
 
-/* ---------- 欢迎页：水面（深水层 + 表面涟漪）----------
-   两层叠出来的，这是"高级感"的主要来源。
-   参考的是 Andy Clarke 在 Smashing Magazine 上总结的环境动画原则：
-   慢而顺、无缝循环、【用分层堆出复杂度】、别抢戏。
-   单层涟漪不管怎么调，读起来都是"浮在纯色上的圈，像贴纸"——
-   真实水面之所以有厚度，是因为眼睛能看到【不同深度的水在动不同的尺度】。
+/* ---------- 欢迎页背景：风中的折叠箔片 ----------
+   照着 reactbits 的 Aero Shards 做的（用户指定 shardColor=#aeff32、
+   accentColor=#ccff7f）。tools/peek-aero.mjs 是当时把它源码抓下来的脚本。
 
-   · 深水层：极慢（6~11s）、极大（铺到 1600px 以上）、极淡。
-     它是"水面下面还有水"的那一层，不抢戏，但少了它整个画面就薄了。
-     剖面比表面涟漪宽得多、散得多 —— 深水的涌动本来就是弥散的，不是一圈线。
+   原版是 WebGPU 组件：vgpu 依赖、WGSL 着色器、三千多个实例，
+   外加泛光/颗粒/色散三档后处理。这个站是零依赖的静态站 ——
+   搬一整套 WebGPU 管线进来不现实，而且 WebGPU 至今没有广泛支持，
+   搬进来的结果是相当一部分访客只看到一片空白。
+   所以用 Canvas 2D 复刻它的【观感】，画法在 main.js 第 12 节。
 
-   · 表面涟漪：一圈从一点向外扩散、同时变淡。鼠标不动时随机位置自己冒，
-     移动时沿路径留下波纹往外晕开（见 main.js 第 11 节）。
-
-   两层的剖面都直接烘进 radial-gradient，不用 filter:blur()：
-   模糊滤镜每帧都要重新过滤整层像素（这个站已经因为手机上全屏模糊卡过一次），
-   而渐变是一次栅格化、之后只做缩放和透明度，全程走合成器。
-
-   尺寸夹上限是算过显存的：表面 16 个 × 560px + 深水 3 个 × 900px ≈ 20MB。 */
-.welcome{
-  --wave:clamp(240px,30vmax,560px);
-  --deep:clamp(420px,54vmax,900px);
+   画布这一层只管铺满和层级，箔片全在 JS 里画。
+   放在网格线【下面】（z-index:0），压在上面才不会把网格糊掉。 */
+.welcome__shards{
+  position:absolute;inset:0;z-index:0;
+  width:100%;height:100%;display:block;pointer-events:none;
+  /* 第一帧画出来之前不显示，避免开场先闪一下空画布 */
+  opacity:0;transition:opacity .8s var(--ease);
 }
-.welcome__wave{position:absolute;inset:0;z-index:0;pointer-events:none}
-.welcome__deep,.welcome__rip{position:absolute;inset:0}
-.welcome__deep i,.welcome__rip i{
-  position:absolute;left:0;top:0;
-  border-radius:50%;
-  /* 负 margin 把原点从左上角挪到圆心，
-     这样 JS 写的 translate3d 就是"圆心要去的坐标"，不用再减半径 */
-  opacity:0;                 /* 没在动的环必须完全不可见 */
-}
-.welcome__rip i{
-  width:var(--wave);height:var(--wave);
-  margin:calc(var(--wave) / -2) 0 0 calc(var(--wave) / -2);
-  /* 剖面：一小段【波列】的横切面，从内到外走一遍。
-     一颗石子落水不会只产生一圈，而是一列波：一个主峰，后面跟着几个
-     越来越弱、越来越密的次峰。把这一列烘进渐变，读起来才是水，
-     而不是"画了一个圆"。
-
-     ⚠ 配色是这个效果最容易做脏的地方，第一版就做脏了 —— 用户直接说"画面有点脏"。
-     根因是【方向反了】：我用深橄榄色做主体，把霓虹从 L 0.50 压到 L 0.39，
-     色相还偏了 1.9°。在【高饱和的亮底】上压暗，眼睛读到的不是"阴影"而是"污渍"——
-     纯色页面一旦出现不规则的暗斑，第一反应就是屏幕脏了。
-     实测（tools/swatch-ripple.mjs 会把候选并排画在霓虹上，一眼比出来）：
-       压暗方案  合成 rgb(156,197,0)  明度 0.39  →  发灰，像污渍
-       提亮方案  合成 rgb(231,255,117) 明度 0.73  →  干净，像水面反光
-     所以现在【以白色高光为主体】，暗带只留极轻的一点用来托住立体感。
-
-     暗带的颜色严格按【同一个系数】缩三个通道：210×0.809=170、255×0.809=206。
-     同比例缩放不改变色相，色相一偏就浑 —— 之前那版 96/210=0.457 而 134/255=0.525，
-     两个通道缩的不是一个比例，色相被拉向绿色，混在霓虹里就是"脏"。
-
-     亮暗仍然成对：白的是波峰（像透镜把光聚过来），极轻的暗带是波谷。
-     只有亮线没有暗带的话，环会飘、没有厚度。
-
-     ⚠ 还有一次是"等重的多道环"踩的：三道波峰做成差不多的强度，
-     放大一看是一圈圈等重的白环 —— 像等高线、像靶心，就是不像水。
-     真实涟漪只有【一条脊是主导的】，后面的回声弱得多，眼睛才不会去数圈。
-     所以主峰明显压过回声 .13；中间那道暗带 .34 紧贴主峰，
-     给脊做出"这边亮、那边暗"的立体感 —— 有立体感才像隆起来的水。
-
-     ⚠ 第三次踩的是"为了干净压过头"：主峰一度只有 .58，还要再乘动画的
-     0.28~0.62，实际有效透明度只剩 0.16~0.36，用户反馈"太不明显了"。
-     但【不能靠压暗来解决】—— 那正是第一次做脏的原因。
-     霓虹的绿通道已经顶到 255，提亮只能动红和蓝两个通道，
-     想要显眼就必须把白色推得【更实】（.90），而不是往灰里走。
-     白色推到 .90 合成出来是 rgb(250,255,229)：极亮，但饱和度和色相都没丢，依然干净。 */
-  background:radial-gradient(circle closest-side,
-    rgba(170,206,0,0)      0%,
-    rgba(170,206,0,0)     50%,
-    rgba(170,206,0,.16)   56%,   /* 内侧波谷 */
-    rgba(255,255,255,.90) 63%,   /* 主波峰：唯一的亮脊，要实 */
-    rgba(170,206,0,.34)   71%,   /* 紧邻的暗带 —— 立体感全靠它 */
-    rgba(255,255,255,.13) 79%,   /* 回声，弱到只是余韵 */
-    rgba(170,206,0,.12)   87%,
-    rgba(170,206,0,0)     94%,
-    rgba(170,206,0,0)    100%);
-}
-/* 深水层：同样是"提亮"而不是"压暗"。
-   大面积压暗本身就是"屏幕脏了"的读法 —— 一大片不规则的暗区在纯色页面上
-   只会让人想去擦屏幕。改成极淡的白色涌动，读起来是"光在水面下走"，
-   永远不会脏。 */
-.welcome__deep i{
-  width:var(--deep);height:var(--deep);
-  margin:calc(var(--deep) / -2) 0 0 calc(var(--deep) / -2);
-  background:radial-gradient(circle closest-side,
-    rgba(255,255,255,0)     0%,
-    rgba(255,255,255,0)    24%,
-    rgba(255,255,255,.06)  44%,
-    rgba(255,255,255,.11)  62%,
-    rgba(255,255,255,.06)  81%,
-    rgba(255,255,255,0)   100%);
-}
+.welcome__shards.is-ready{opacity:1}
 
 .welcome__top{
   position:relative;z-index:1;
@@ -524,7 +455,7 @@ body.is-ready .welcome__top{opacity:1}
   opacity:0;transform:translateY(14px);
   transition:opacity .8s var(--ease) .6s,transform .8s var(--ease) .6s;
 }
-.welcome__label .dot{width:8px;height:8px;border-radius:50%;background:var(--ink)}
+.welcome__label .dot{width:8px;height:8px;border-radius:50%;background:var(--neon)}
 body.is-ready .welcome__label{opacity:1;transform:none}
 
 .welcome__title{
@@ -587,12 +518,12 @@ body.is-ready .welcome__line:nth-child(2) > span{transition-delay:.13s}
      桌面上 0.028em = 4.26px，落在 [3.6, 4.4] 区间内，所以桌面完全不受影响。
      注意颜色不能省 —— -webkit-text-stroke 是简写属性，只给宽度的话
      颜色取 currentColor，而这里的 color 是 transparent，描边会整个消失。 */
-  -webkit-text-stroke:clamp(3.6px, 0.028em, 4.4px) var(--ink);
+  -webkit-text-stroke:clamp(3.6px, 0.028em, 4.4px) var(--neon);
 }
 .welcome__line--outline > span::after{
   content:attr(data-text);
   position:absolute;left:0;top:0;
-  color:var(--neon);                    /* 填背景色，盖住内部交叉线和描边内半 */
+  color:var(--ink);                     /* 填背景色，盖住内部交叉线和描边内半（底色翻了，这里也要跟着翻） */
   -webkit-text-stroke:0;
   pointer-events:none;
 }
@@ -617,19 +548,19 @@ body.is-ready .welcome__line:nth-child(2) > span{transition-delay:.13s}
 /* 描边和填充下沉到每个字上，做法与上面完全一致，只是作用域从"行"变成"字" */
 .welcome__line--outline .welcome__ch{
   position:relative;color:transparent;
-  -webkit-text-stroke:clamp(3.6px,0.028em,4.4px) var(--ink);
+  -webkit-text-stroke:clamp(3.6px,0.028em,4.4px) var(--neon);
 }
 .welcome__line--outline .welcome__ch::after{
   content:attr(data-text);
   position:absolute;left:0;top:0;
-  color:var(--neon);-webkit-text-stroke:0;pointer-events:none;
+  color:var(--ink);-webkit-text-stroke:0;pointer-events:none;
 }
 
 .welcome__foot{
   position:relative;z-index:1;
   display:flex;align-items:flex-end;justify-content:space-between;gap:1.2rem;
   flex-wrap:wrap;
-  border-top:1px solid rgba(17,17,18,.2);
+  border-top:1px solid rgba(244,244,242,.18);
   padding-top:1.1rem;
   opacity:0;transition:opacity .9s var(--ease) .8s;
 }
