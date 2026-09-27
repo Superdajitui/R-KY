@@ -311,7 +311,10 @@
     if (y > vh * 0.55) document.body.classList.add('is-hero');
     if (welcome && !reduce && y < vh * 1.4) {
       const p = Math.min(1, y / vh);
-      welcome.style.setProperty('--wy', `${(-y * 0.2).toFixed(1)}px`);
+      // 整块上浮压到 0.09：逐字散开已经把"往上飞"这件事做足了。
+      // 两层都按原来的 0.2 叠起来，字会整体冲出屏幕顶端，
+      // 反而看不清"散开"这个动作本身 —— 两个位移叠在一起就只剩位移了。
+      welcome.style.setProperty('--wy', `${(-y * 0.09).toFixed(1)}px`);
       welcome.style.setProperty('--wo', String(Math.max(0, 1 - p * 1.15)));
     }
 
@@ -656,7 +659,16 @@
   const titleEl = $('.welcome__title');
   const bodyEl  = $('.welcome__body');
 
-  if (welcome && wave && waveDeep && titleEl && bodyEl && !isTouch && !reduce) {
+  /* 两道闸门分开了，不再是一个笼统的 !isTouch：
+     · 逐字（散开 + 悬停）—— 散开只是十个字的 transform + opacity，纯合成器操作，
+       手机上完全跑得起；被挡住的只有【悬停】那部分，因为触屏根本没有 hover。
+       （原来整块都被 !isTouch 关掉，手机上第一屏就完全没有这个时刻了。）
+     · 水面 —— 一池子几百像素的图层，手机不启用。 */
+  const canChars = !!(welcome && wave && waveDeep && titleEl && bodyEl && !reduce);
+  const canPointer = !isTouch;
+  const canWave = !isTouch;
+
+  if (canChars) {
     /* ── 拆字 ──
        行内元素不吃 transform，不拆成 inline-block 就谈不上"逐字"。
        只在真能跑动效的时候拆：拆了却没脚本接着驱动，等于白改一遍 DOM。 */
@@ -671,7 +683,17 @@
         s.dataset.text = ch;            // 填充那层要用 attr(data-text)
         s.textContent = ch;
         line.appendChild(s);
-        chars.push({ el: s, cx: 0, cy: 0, sc: 1, v: 0, wrote: 1 });
+        const i = chars.length;
+        chars.push({
+          el: s, cx: 0, cy: 0, h: 120, sc: 1, v: 0, tf: '',
+          i,
+          /* 散开的方向和幅度按序号算出来，不用随机数：
+             刷新一次变一个样会显得没设计过；而且【奇偶反向】——
+             相邻的字往两边飞，读起来才是"炸开"，
+             同向的话像一阵风吹过，就散了。 */
+          sx: (i % 2 ? 1 : -1) * (.3 + ((i * 37) % 100) / 100 * 1.0),
+          rot: (i % 2 ? 1 : -1) * (5 + ((i * 53) % 100) / 100 * 12),
+        });
       }
     }
 
@@ -706,6 +728,7 @@
         const o = offsetIn(c.el, bodyEl);
         c.cx = b.left + o.x + c.el.offsetWidth / 2;
         c.cy = b.top + o.y + c.el.offsetHeight / 2;
+        c.h = c.el.offsetHeight;        // 散开的位移量按字高算，跟着字号走
       }
       // 影响半径跟着字号走。字号是 clamp 出来的（手机 55px / 桌面 152px），
       // 写死 px 的话小屏上会"一次弹起一整行"，就谈不上逐个了。
@@ -866,6 +889,14 @@
        弹簧是每帧积分出来的，没法交给合成器。但它只在鼠标悬停时跑，
        而且收敛之后就自己停。 */
 
+    /* ══════════ 揭幕：整屏文字散开飞走 ══════════
+       这是全站唯一一个"编排过的时刻"（见下面 frame 里的说明）。
+       进度由【滚动位置】驱动，和悬停弹簧共用同一个写入点 ——
+       两个效果都要写 transform，分开写必然互相覆盖。 */
+    const SCAT_VH = .55;        // 散开占 0 → 0.55 屏
+    const SCAT_STAGGER = .045;  // 每个字晚启动一点，形成"依次飞走"的波
+    let scat = 0;               // 当前进度（阻尼跟随，滚轮再快也不会跳）
+
     const mouse = { x: 0, y: 0, has: false };
     let inside = false;
     let running = false, lastT = 0;
@@ -876,8 +907,9 @@
     function reset() {
       for (const c of chars) {
         c.sc = 1; c.v = 0;
-        if (c.wrote !== 1) { c.el.style.transform = ''; c.wrote = 1; }
+        if (c.tf !== '') { c.el.style.transform = ''; c.el.style.opacity = ''; c.tf = ''; }
       }
+      scat = 1;                 // 已经滚过欢迎页，进度就停在"完全散开"
       for (const el of pool) { if (el.__a) { el.__a.cancel(); el.__a = null; } }
       for (const el of deepPool) { if (el.__a) { el.__a.cancel(); el.__a = null; } }
       mouse.has = false; inside = false;
@@ -901,9 +933,22 @@
          写入阈值管的是"要不要重绘"，落定判据管的是"算完没有"，两件事不能合并。 */
       let moving = false;
 
+      /* ── 揭幕进度 ──
+         阻尼跟随（τ=80ms），所以滚轮一格一格地跳，字也是连续飞的。
+         到位之后精确吸附，循环才能停。 */
+      const st = Math.min(1, Math.max(0, window.scrollY / (innerHeight * SCAT_VH)));
+      if (Math.abs(st - scat) > .0015) {
+        scat += (st - scat) * (1 - Math.exp(-dt / .08));
+        moving = true;
+      } else scat = st;
+
+      const span = Math.max(.15, 1 - SCAT_STAGGER * (chars.length - 1));
+
       for (const c of chars) {
         let target = 1;
-        if (inside) {
+        // 只在这块屏还"平"的时候响应悬停：散开之后字已经不在原位，
+        // 再按原始坐标算距离就是对着一片空气做弹簧
+        if (inside && scat < .15) {
           const d = Math.hypot(mouse.x - c.cx, mouse.y - c.cy);
           if (d < radius) {
             const f = 1 - d / radius;
@@ -917,13 +962,30 @@
         if (settled) { c.sc = target; c.v = 0; }
         else moving = true;
 
+        /* 逐字散开：序号越大启动越晚，形成一道从左到右的波。
+           smoothstep 让起步和收尾都不生硬；
+           淡出只发生在后 60%，前 40% 是"完整地飞出去"——
+           一开始就淡会看不清散开这个动作本身。 */
+        const lp = Math.min(1, Math.max(0, (scat - c.i * SCAT_STAGGER) / span));
+        const e = lp * lp * (3 - 2 * lp);
+        const ty = -e * c.h * .95;
+        const tx = e * c.sx * c.h;
+        const rot = e * c.rot;
+        const s = c.sc * (1 - e * .16);
+        const op = 1 - Math.max(0, (e - .4) / .6);
+
         // 只在值真的变了才写。写一次就是一次重绘，
         // 十几个大字每帧无条件重绘，桌面也会掉帧。
-        // 另外回到 1 时必须把内联样式清掉，不能因为"差值小于阈值"就留一个 scale(1.0002)。
-        const needClear = c.sc === 1 && c.wrote !== 1;
-        if (needClear || Math.abs(c.sc - c.wrote) > 6e-4) {
-          c.el.style.transform = c.sc === 1 ? '' : 'scale(' + c.sc.toFixed(4) + ')';
-          c.wrote = c.sc;
+        // 回到静止时必须把内联样式清掉，不能留一个 scale(1.0002) 在那儿。
+        let tf = '';
+        if (e > 0 || c.sc !== 1) {
+          tf = 'translate3d(' + tx.toFixed(2) + 'px,' + ty.toFixed(2) + 'px,0)' +
+            ' rotate(' + rot.toFixed(2) + 'deg) scale(' + s.toFixed(4) + ')';
+        }
+        if (tf !== c.tf) {
+          c.el.style.transform = tf;
+          c.el.style.opacity = (e > 0 && op < .999) ? op.toFixed(3) : '';
+          c.tf = tf;
         }
       }
 
@@ -938,21 +1000,25 @@
       requestAnimationFrame(frame);
     }
 
-    welcome.addEventListener('pointerenter', (e) => {
-      inside = true;
-      mouse.x = e.clientX; mouse.y = e.clientY; mouse.has = true;
-      last = { x: e.clientX, y: e.clientY };   // 别从上次离开的地方补一串
-      kick();
-    }, { passive: true });
+    // 触屏没有 hover，这三个监听整个不挂 —— 挂了只会让"手指划过时的指针位置"
+    // 混进悬停弹簧里，把 scroll 也当成在悬停
+    if (canPointer) {
+      welcome.addEventListener('pointerenter', (e) => {
+        inside = true;
+        mouse.x = e.clientX; mouse.y = e.clientY; mouse.has = true;
+        last = { x: e.clientX, y: e.clientY };   // 别从上次离开的地方补一串
+        kick();
+      }, { passive: true });
 
-    welcome.addEventListener('pointermove', (e) => {
-      mouse.has = true; inside = true;
-      mouse.x = e.clientX; mouse.y = e.clientY;
-      trail(e.clientX, e.clientY);
-      kick();
-    }, { passive: true });
+      welcome.addEventListener('pointermove', (e) => {
+        mouse.has = true; inside = true;
+        mouse.x = e.clientX; mouse.y = e.clientY;
+        if (canWave) trail(e.clientX, e.clientY);
+        kick();
+      }, { passive: true });
 
-    welcome.addEventListener('pointerleave', () => { inside = false; kick(); }, { passive: true });
+      welcome.addEventListener('pointerleave', () => { inside = false; kick(); }, { passive: true });
+    }
 
     /* 滚过一屏之后要复位 —— 这件事不能只挂在 frame 里的那道闸上：
        循环很可能早就自己停了，停了就没人再进 frame，复位也就永远不会发生，
@@ -961,8 +1027,13 @@
        水波纹的自动生成也在这里一起点火／灭火。 */
     addEventListener('scroll', () => {
       if (live()) {
-        if (!idleT) scheduleIdle();
-        if (!deepT) scheduleDeep();
+        if (canWave) {
+          if (!idleT) scheduleIdle();
+          if (!deepT) scheduleDeep();
+        }
+        // 滚动位置驱动逐字散开，所以滚动时也必须把循环叫醒 ——
+        // 少了这一句，滚动只会停在一个已经没人更新的画面上
+        kick();
       } else {
         clearTimeout(idleT); idleT = 0;
         clearTimeout(deepT); deepT = 0;
@@ -981,8 +1052,10 @@
 
     // 开场先等预加载遮罩走完（1.25s 动画 + 淡出 + 0.42s），别在遮罩背后空放波纹。
     // 深水层更晚一点 —— 水面应该先静一下，再慢慢"活"过来。
-    scheduleIdle(2600);
-    scheduleDeep(3800);
+    if (canWave) {
+      scheduleIdle(2600);
+      scheduleDeep(3800);
+    }
 
     /* 调试钩子，和 __scrub() 一套思路：
        让测试能直接问"循环还跑着吗、还有几圈波纹在跑"，
@@ -991,6 +1064,7 @@
       running,
       inside,
       radius: Math.round(radius),
+      scat: +scat.toFixed(4),
       chars: chars.map(c => +c.sc.toFixed(4)),
       rings: aliveCount(),
       deep: deepPool.reduce((n, el) => n + (isRunning(el) ? 1 : 0), 0),

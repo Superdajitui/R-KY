@@ -299,6 +299,84 @@ if (fxReady) {
   check(after.every(v => Math.abs(v - 1) < 0.01), '鼠标移开后所有字缩回原大小',
     after.map(v => v.toFixed(3)).join(','));
 
+  /* --- 揭幕：整屏文字随滚动散开飞走 ---
+     这是全站唯一一个"编排过的时刻"（motionsites 那套教程里的招牌动作：
+     滚动驱动场景切换，标题的字四散飞走）。
+     它由滚动位置驱动，所以断言也必须沿着滚动位置走一遍。 */
+  {
+    const scatAt = async v => {
+      await page.mouse.move(20, 860);          // 别让悬停弹簧掺进来
+      await page.evaluate(y => window.scrollTo(0, y), Math.round(900 * v));
+      await sleep(780);                        // 等阻尼跟随走完
+      return page.evaluate(() => {
+        /* 从矩阵读数，不解析 transform 字符串：CSSOM 会把
+           translate3d(x, y, 0) 规范化成 0px、逗号后补空格，
+           正则一不匹配就静默返回 0，看起来像"位移没生效"，
+           然后你会去改一个本来没坏的 JS（这条路上已经栽过两次）。 */
+        const read = el => {
+          const t = getComputedStyle(el).transform;
+          const m = t === 'none' ? null : new DOMMatrixReadOnly(t);
+          return {
+            ch: el.textContent,
+            tx: m ? m.e : 0, ty: m ? m.f : 0,
+            rot: m ? Math.atan2(m.b, m.a) * 180 / Math.PI : 0,
+            s: m ? Math.sqrt(Math.abs(m.a * m.d - m.b * m.c)) : 1,
+            op: el.style.opacity === '' ? 1 : +el.style.opacity,
+          };
+        };
+        const els = [...document.querySelectorAll('.welcome__ch')];
+        return { scat: window.__welcomeFx().scat, chars: els.map(read) };
+      });
+    };
+
+    const a = await scatAt(0);
+    check(a.scat === 0 && a.chars.every(c => c.tx === 0 && c.ty === 0 && c.op === 1),
+      '停在顶部时标题完好（一个字都没动）', `scat=${a.scat}`);
+
+    const b2 = await scatAt(.22);
+    const movedIdx = b2.chars.map((c, i) => (Math.abs(c.ty) > 4 ? i : -1)).filter(i => i >= 0);
+    console.log(`  滚到 0.22 屏: scat=${b2.scat.toFixed(2)}  ` +
+      `动了的字 ${movedIdx.join(',')}（共 ${b2.chars.length} 个）`);
+    check(movedIdx.length > 0 && movedIdx.length < b2.chars.length,
+      '散开是【逐个】发生的，不是整行一起动',
+      `${movedIdx.length}/${b2.chars.length} 个已经在飞`);
+
+    const c1 = await scatAt(.6);
+    const flying = c1.chars.filter(c => Math.abs(c.ty) > 8);
+    const ups = flying.filter(c => c.ty < 0).length;
+    const dirs = flying.map(c => Math.sign(c.tx)).filter(Boolean);
+    const flips = dirs.filter((d, i) => i && d !== dirs[i - 1]).length;
+    console.log(`  滚到 0.6 屏: ${flying.length} 个字在飞，` +
+      `向上 ${ups} 个，左右反向 ${flips} 次，最大旋转 ` +
+      `${flying.length ? Math.max(...flying.map(c => Math.abs(c.rot))).toFixed(1) : 0}°`);
+    check(flying.length > 2 && ups === flying.length, '飞走的方向是【向上】',
+      `${ups}/${flying.length} 个向上`);
+    check(flips >= Math.max(1, flying.length - 2),
+      '相邻的字往两边飞（奇偶反向 —— 同向的话像一阵风吹过，不像炸开）',
+      `${flying.length} 个字里反向 ${flips} 次`);
+    check(flying.some(c => Math.abs(c.rot) > 2), '飞出去的时候带旋转',
+      `最大 ${flying.length ? Math.max(...flying.map(c => Math.abs(c.rot))).toFixed(1) : 0}°`);
+
+    const d = await scatAt(.62);
+    const faded = d.chars.filter(c => c.op < .9).length;
+    console.log(`  滚到 0.62 屏: ${faded}/${d.chars.length} 个字已经在淡出`);
+    check(faded >= 2, '散开之后会淡出，不是硬切掉', `${faded} 个字在淡出`);
+
+    // 滚回顶部必须完全复原，不能留一地的内联样式
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await sleep(1500);
+    const back2 = await page.evaluate(() => {
+      const els = [...document.querySelectorAll('.welcome__ch')];
+      return {
+        scat: window.__welcomeFx().scat,
+        dirty: els.filter(el => el.style.transform || el.style.opacity).length,
+      };
+    });
+    check(back2.scat === 0 && back2.dirty === 0,
+      '滚回顶部后标题完全复原（内联样式清零，不残留位移或半透明）',
+      `scat=${back2.scat} 仍有内联样式的字=${back2.dirty}`);
+  }
+
   /* --- 水波纹 ---
      两个行为，分开验：
        · 鼠标不动时自己冒（随机位置）—— 这是"水面"的底噪

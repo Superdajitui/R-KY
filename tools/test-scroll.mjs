@@ -695,29 +695,41 @@ const mob = await mp.evaluate(() => {
 check(mob.bad.length === 0, '手机上滚到底也没有内容被藏住',
   mob.bad.length ? [...new Set(mob.bad)].join(' ') : '全部可见');
 
-/* 手机上欢迎页那套效果必须完全不启动。
-   逐字缩放要重绘十几个上百像素的大字，水波纹会一直往满屏图层里画圈 ——
-   在手机上跑这些就是拿续航换一个看不见的效果。
-   同时要确认【不拆字那条路】是好的：描边得仍然画在整行上。 */
+/* 手机上欢迎页那套效果：逐字【要】跑，水面【不要】跑。
+   两道闸门是分开的 ——
+   散开只是十个字的 transform + opacity，纯合成器操作，手机跑得起，
+   而且那是第一屏唯一的"编排时刻"，手机上缺了它整段体验就少一截；
+   水面是一池子几百像素的图层，那个才是不该给手机的。
+   悬停单独关掉：触屏根本没有 hover。 */
+await mp.mouse.move(200, 420);           // 真发一次指针移动，验证监听确实没挂
+await sleep(300);
 const mobFx = await mp.evaluate(() => {
   const line = document.querySelector('.welcome__line--outline > span');
-  const cs = getComputedStyle(line);
-  const after = getComputedStyle(line, '::after');
+  const split = line.classList.contains('is-split');
+  // 描边和填充在拆字后下沉到每个字上，所以要问"现在是谁在画字"
+  const painting = split ? line.querySelector('.welcome__ch') : line;
+  const cs = getComputedStyle(painting);
+  const after = getComputedStyle(painting, '::after');
   return {
     hooked: typeof window.__welcomeFx === 'function',
     chars: document.querySelectorAll('.welcome__ch').length,
+    split,
     stroke: cs.webkitTextStrokeWidth,
     strokeColor: cs.webkitTextStrokeColor,
     fill: after.content,
+    inside: window.__welcomeFx ? window.__welcomeFx().inside : null,
     rings: [...document.querySelectorAll('#wave i, #waveDeep i')]
       .filter(el => el.getAnimations().length).length,
   };
 });
-check(!mobFx.hooked && mobFx.chars === 0, '手机上不启动逐字效果（省电，DOM 也没拆）',
-  `hook=${mobFx.hooked} 拆了 ${mobFx.chars} 个字`);
-check(mobFx.rings === 0, '手机上一圈水波纹都不跑', `在跑的 ${mobFx.rings} 个`);
+check(mobFx.hooked && mobFx.chars === 10,
+  '手机上照样拆字（散开这个时刻手机上同样该有）', `${mobFx.chars} 个字`);
+check(mobFx.rings === 0, '手机上一圈水波纹都不跑（一池子大图层，不该给手机）',
+  `在跑的 ${mobFx.rings} 个`);
+check(mobFx.inside === false, '手机上不挂悬停（触屏没有 hover，挂了只会把手指位置当悬停）',
+  `inside=${mobFx.inside}`);
 check(mobFx.stroke !== '0px' && mobFx.fill !== 'none',
-  '手机上镂空描边和填充层都在整行上（没拆字这条路没被改坏）',
+  '手机上镂空描边和填充层都在（拆字后下沉到每个字，没漏掉）',
   `${mobFx.stroke} ${mobFx.strokeColor} / ::after=${mobFx.fill}`);
 check(mob.passionSrc.every(s => !s.includes('-700.')),
   '2x 手机上照片取用了更大的一档（srcset 生效，没退到最小那档）',
