@@ -152,6 +152,12 @@
 <main>
 
   <!-- ══════════ 首屏 ══════════ -->
+  <!-- 首屏外面这层是"钉住"用的跑道：
+     .heroPin 比一屏高出一段，滚动走过这一段时首屏被推到原位看起来没动，
+     同时人物和名字向中间缩小；走完这一段，页面才真正往下滚。
+     用变换做而不是 position:sticky —— body 上有 overflow-x:hidden，
+     那会让 body 变成滚动容器，sticky 在它下面根本不生效。 -->
+<div class="heroPin">
   <section class="hero" id="hero">
     <div class="hero__grid" aria-hidden="true">
       <i></i><i></i><i></i><i></i>
@@ -200,6 +206,7 @@
       </div>
     </div>
   </section>
+</div>
 
   <!-- ══════════ 跑马灯 ══════════
        同一句重复 8 遍，动画走 -12.5%（正好是一遍的宽度），首尾相接无限循环。
